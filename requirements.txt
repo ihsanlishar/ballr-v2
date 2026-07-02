@@ -1,0 +1,8 @@
+flask
+requests
+streamlit
+python-dotenv
+numpy
+scipy
+cachetools
+plotly
