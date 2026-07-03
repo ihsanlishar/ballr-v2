@@ -164,6 +164,7 @@ st.markdown("""
     .card-score-num   { font-size:1.5rem;font-weight:900;color:#ffffff;min-width:20px;text-align:center;line-height:1; }
     .card-score-sep   { font-size:1rem;color:#1e2d45;font-weight:300; }
     .card-vs          { font-size:0.72rem;font-weight:600;color:#1e2d45;letter-spacing:1px; }
+    .card-score-pens  { font-size:0.8rem;font-weight:700;color:#64748b;margin:0 2px; }
     .card-footer      { display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid #0f1626; }
     .card-time        { font-size:0.73rem;color:#3d4f6b; }
     .badge-ft         { font-size:0.6rem;font-weight:700;letter-spacing:1.5px;background:#131e30;color:#3d4f6b;border-radius:20px;padding:3px 10px; }
@@ -181,6 +182,7 @@ st.markdown("""
     .hero-vs     { color:#131e30; }
     .hero-score  { font-size:5rem;font-weight:900;letter-spacing:-4px;line-height:1;margin:8px 0 16px 0; }
     .hero-score-sep { color:#1e2d45;letter-spacing:0; }
+    .hero-pens   { font-size:1.6rem;font-weight:700;color:#64748b;letter-spacing:-1px;margin:0 6px;vertical-align:middle; }
     .hero-badges { display:flex;justify-content:center;align-items:center;gap:12px;margin-top:4px; }
     .hero-badge-w { background:#0f2d1a;color:#4ade80;border:1px solid #166534;border-radius:20px;padding:4px 16px;font-size:0.72rem;font-weight:700;letter-spacing:1px; }
     .hero-badge-l { background:#1f0f0f;color:#f87171;border:1px solid #7f1d1d;border-radius:20px;padding:4px 16px;font-size:0.72rem;font-weight:700;letter-spacing:1px; }
@@ -254,6 +256,27 @@ st.markdown("""
     .empty-icon  { font-size:2.5rem;margin-bottom:12px; }
 
     [data-testid="stPlotlyChart"] { border-radius:12px;overflow:hidden; }
+
+    /* ── Confidence meter ── */
+    .confidence-card { background:#0d1526;border:1px solid #131e30;border-left:3px solid;border-radius:0 12px 12px 0;padding:16px 20px;margin:16px 0 28px 0; }
+    .confidence-head { display:flex;align-items:center;gap:14px; }
+    .confidence-icon { font-size:1.5rem;line-height:1; }
+    .confidence-tier { font-size:0.85rem;font-weight:800;letter-spacing:0.5px;margin-bottom:3px; }
+    .confidence-note { font-size:0.78rem;color:#64748b;line-height:1.4; }
+    .confidence-note strong { color:#e2e8f0; }
+    .confidence-badge { margin-left:auto;font-size:0.7rem;font-weight:800;border:1px solid;border-radius:20px;padding:4px 12px;white-space:nowrap; }
+    .confidence-bar-bg { background:#080d18;border-radius:6px;height:6px;width:100%;margin-top:14px;overflow:hidden; }
+    .confidence-bar-fill { height:100%;border-radius:6px;transition:width 0.3s; }
+
+    /* ── Bracket ── */
+    .bracket-wrap  { background:#0d1526;border:1px solid #131e30;border-radius:14px;padding:20px 16px;margin:8px 0 24px 0;overflow-x:auto; }
+    .bracket-wrap svg { display:block;min-width:920px; }
+    .bracket-legend { display:flex;gap:20px;justify-content:center;margin-top:14px;font-size:0.68rem;color:#3d4f6b; }
+    .bracket-legend span { display:inline-flex;align-items:center;gap:6px; }
+    .bracket-dot { width:8px;height:8px;border-radius:50%;display:inline-block; }
+
+    /* ── Segmented control ── */
+    [data-testid="stSegmentedControl"] label { font-size:0.75rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -286,6 +309,37 @@ def get_match_local_date(iso):
     except:
         return None
 
+def match_winner(m):
+    """
+    True winner side ('home'/'away') accounting for penalty shootouts.
+    Returns None for an unfinished match or a genuine draw (e.g. group stage).
+    """
+    if m.get('status') != 'FINISHED':
+        return None
+    hs, aws = m.get('home_score'), m.get('away_score')
+    if hs is None or aws is None:
+        return None
+    if hs != aws:
+        return 'home' if hs > aws else 'away'
+    if m.get('went_to_penalties'):
+        hp, ap = m.get('home_penalties'), m.get('away_penalties')
+        if hp is not None and ap is not None and hp != ap:
+            return 'home' if hp > ap else 'away'
+    return None
+
+def score_parts(m):
+    """
+    Returns (home_score, home_pens, away_score, away_pens). Penalty values
+    are None unless the match was decided on penalties, letting callers
+    style the shootout count differently from the main scoreline.
+    """
+    hs, aws = m.get('home_score'), m.get('away_score')
+    if hs is None or aws is None:
+        return None, None, None, None
+    if m.get('went_to_penalties'):
+        return hs, m.get('home_penalties'), aws, m.get('away_penalties')
+    return hs, None, aws, None
+
 def fmt_stage(stage):
     return {
         'GROUP_STAGE':'Group Stage','LAST_32':'Round of 32','LAST_16':'Round of 16',
@@ -303,13 +357,10 @@ def stat_box(val, lbl, color='blue'):
 def sec_header(title):
     st.markdown(f'<div class="sec-header">{title}</div>', unsafe_allow_html=True)
 
-def hero_badge(home_score, away_score, side):
-    if home_score is None or away_score is None: return ''
-    win  = (home_score > away_score) if side == 'home' else (away_score > home_score)
-    loss = (home_score < away_score) if side == 'home' else (away_score < home_score)
-    if win:   return '<span class="hero-badge-w">WIN</span>'
-    if loss:  return '<span class="hero-badge-l">LOSS</span>'
-    return '<span class="hero-badge-d">DRAW</span>'
+def hero_badge(winner_side, side):
+    if winner_side is None: return '<span class="hero-badge-d">DRAW</span>'
+    if winner_side == side: return '<span class="hero-badge-w">WIN</span>'
+    return '<span class="hero-badge-l">LOSS</span>'
 
 def plotly_base(fig, height=300):
     fig.update_layout(
@@ -383,6 +434,45 @@ def render_donut_with_boxes(home_team, away_team, p1, pd_, p2):
             {boxes_html}
         </div>
         """, unsafe_allow_html=True)
+
+# ── Confidence meter ────────────────────────────────────────────────────────
+def render_confidence_meter(home_team, away_team, p1, pd_, p2):
+    """
+    Confidence = gap between the model's top pick and the next most likely
+    outcome. A narrow gap (e.g. 38% vs 34%) means the model sees this as
+    close to a toss-up even if it has a nominal favorite; a wide gap means
+    it's genuinely backing one outcome.
+    """
+    outcomes = [('home', home_team, p1), ('draw', 'Draw', pd_), ('away', away_team, p2)]
+    ranked   = sorted(outcomes, key=lambda x: x[2], reverse=True)
+    top_key, top_label, top_val = ranked[0]
+    _, _, second_val            = ranked[1]
+    margin = round(top_val - second_val, 1)
+
+    if margin >= 25:
+        tier, color, border, icon = 'High Confidence', '#4ade80', '#166534', '🔒'
+    elif margin >= 10:
+        tier, color, border, icon = 'Medium Confidence', '#eab308', '#78530a', '⚖️'
+    else:
+        tier, color, border, icon = 'Toss-Up', '#f87171', '#7f1d1d', '🎲'
+
+    bar_pct = max(4, min(100, round((margin / 50) * 100)))
+
+    st.markdown(f"""
+    <div class="confidence-card" style="border-left-color:{border}">
+        <div class="confidence-head">
+            <span class="confidence-icon">{icon}</span>
+            <div>
+                <div class="confidence-tier" style="color:{color}">{tier}</div>
+                <div class="confidence-note">Model favors <strong>{top_label}</strong> by {margin} pts over the next most likely outcome</div>
+            </div>
+            <span class="confidence-badge" style="color:{color};border-color:{border}">{margin} pt gap</span>
+        </div>
+        <div class="confidence-bar-bg">
+            <div class="confidence-bar-fill" style="width:{bar_pct}%;background:{color}"></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ── Chart: Stats comparison ────────────────────────────────────────────────
 def chart_stats_comparison(home_team, away_team, home_stats, away_stats):
@@ -634,6 +724,173 @@ def render_key_factors(home_team, away_team, home_stats, away_stats, sim):
 
     st.markdown(f'<div class="key-factors">{rows_html}</div>', unsafe_allow_html=True)
 
+# ── Bracket visualization ────────────────────────────────────────────────────
+def render_bracket_view(fixtures):
+    """
+    Renders the knockout stage as a proper connected tournament tree (SVG),
+    built purely from data already in `fixtures` — no extra API calls.
+    Each round is vertically centered between the two matches that feed it,
+    so the connector lines line up cleanly regardless of bracket size.
+    """
+    stage_order = ['LAST_32', 'LAST_16', 'QUARTER_FINALS', 'SEMI_FINALS', 'FINAL']
+    stage_names = {
+        'LAST_32': 'Round of 32', 'LAST_16': 'Round of 16',
+        'QUARTER_FINALS': 'Quarterfinals', 'SEMI_FINALS': 'Semifinals', 'FINAL': 'Final',
+    }
+    rounds = [[f for f in fixtures if f['stage'] == s] for s in stage_order]
+
+    if not rounds[0]:
+        st.markdown(
+            '<div class="empty-state"><div class="empty-icon">🏆</div>'
+            'Bracket will appear once the Round of 32 draw is set.</div>',
+            unsafe_allow_html=True)
+        return
+
+    base_pitch = 64
+    card_w, card_h = 172, 46
+    col_gap, left_pad, top_pad = 64, 24, 40
+    champ_w = 150
+
+    def slot_y(round_idx, match_idx):
+        pitch = base_pitch * (2 ** round_idx)
+        return top_pad + pitch / 2 + match_idx * pitch
+
+    n0 = len(rounds[0])
+    total_h = n0 * base_pitch + top_pad + 30
+    total_w = left_pad + len(rounds) * (card_w + col_gap) + champ_w + 20
+
+    def esc(s):
+        return (s or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+    def team_row(name, score, pens, is_winner, is_loser, y_off, color):
+        if not name:
+            return f'<text x="14" y="{y_off}" font-size="10" fill="#3d4f6b" font-style="italic">TBD</text>'
+        disp = esc(name if len(name) <= 17 else name[:16] + '…')
+        weight = '800' if is_winner else '500'
+        fill   = '#f8fafc' if is_winner else ('#3d4f6b' if is_loser else '#cbd5e1')
+        score_txt = '' if score is None else str(score)
+        pens_txt  = f'<tspan font-size="8" font-weight="600" fill="{fill}" opacity="0.75" dx="3">({pens})</tspan>' if pens is not None else ''
+        return (
+            f'<circle cx="6" cy="{y_off-4}" r="3" fill="{color}"/>'
+            f'<text x="16" y="{y_off}" font-size="10.5" font-weight="{weight}" fill="{fill}" font-family="Inter, sans-serif">{disp}</text>'
+            f'<text x="{card_w-12}" y="{y_off}" font-size="11" font-weight="800" fill="{fill}" text-anchor="end" font-family="Inter, sans-serif">{score_txt}{pens_txt}</text>'
+        )
+
+    parts = [f'<svg viewBox="0 0 {total_w} {total_h}" xmlns="http://www.w3.org/2000/svg" width="100%" height="{total_h}">']
+
+    # round headers
+    for r, s in enumerate(stage_order):
+        x = left_pad + r * (card_w + col_gap)
+        parts.append(
+            f'<text x="{x+card_w/2}" y="20" font-size="9.5" font-weight="700" letter-spacing="1.5" '
+            f'fill="#3d4f6b" text-anchor="middle" font-family="Inter, sans-serif">{stage_names[s].upper()}</text>'
+        )
+
+    # connectors (drawn first, so cards sit on top)
+    for r in range(1, len(rounds)):
+        prev_n = len(rounds[r - 1])
+        for i in range(len(rounds[r])):
+            if 2 * i + 1 >= prev_n:
+                break
+            y1 = slot_y(r - 1, 2 * i)
+            y2 = slot_y(r - 1, 2 * i + 1)
+            ym = slot_y(r, i)
+            x_prev_right = left_pad + (r - 1) * (card_w + col_gap) + card_w
+            x_mid        = x_prev_right + col_gap / 2
+            x_next_left  = left_pad + r * (card_w + col_gap)
+            parts.append(f'<path d="M{x_prev_right},{y1} H{x_mid}" stroke="#1e2d45" stroke-width="1.5" fill="none"/>')
+            parts.append(f'<path d="M{x_prev_right},{y2} H{x_mid}" stroke="#1e2d45" stroke-width="1.5" fill="none"/>')
+            parts.append(f'<path d="M{x_mid},{y1} V{y2}" stroke="#1e2d45" stroke-width="1.5" fill="none"/>')
+            parts.append(f'<path d="M{x_mid},{ym} H{x_next_left}" stroke="#1e2d45" stroke-width="1.5" fill="none"/>')
+
+    # match cards
+    for r, ms in enumerate(rounds):
+        x = left_pad + r * (card_w + col_gap)
+        for i, m in enumerate(ms):
+            y = slot_y(r, i) - card_h / 2
+            home, away = m.get('home'), m.get('away')
+            hs, aw_s   = m.get('home_score'), m.get('away_score')
+            finished   = m.get('status') == 'FINISHED' and hs is not None and aw_s is not None
+            winner_side = match_winner(m)
+            home_win   = winner_side == 'home'
+            away_win   = winner_side == 'away'
+            home_pens  = m.get('home_penalties') if m.get('went_to_penalties') else None
+            away_pens  = m.get('away_penalties') if m.get('went_to_penalties') else None
+            hc = get_team_color(home, other_team=away) if home else '#1e2d45'
+            ac = get_team_color(away, other_team=home) if away else '#1e2d45'
+            border = '#131e30' if not finished else '#1e3a5f'
+
+            parts.append(f'<g transform="translate({x},{y})">')
+            parts.append(f'<rect width="{card_w}" height="{card_h}" rx="8" fill="#0d1526" stroke="{border}" stroke-width="1"/>')
+            parts.append(f'<line x1="0" y1="{card_h/2}" x2="{card_w}" y2="{card_h/2}" stroke="#0f1626" stroke-width="1"/>')
+            parts.append(team_row(home, hs, home_pens, home_win, away_win, 17, hc))
+            parts.append(team_row(away, aw_s, away_pens, away_win, home_win, card_h - 7, ac))
+            parts.append('</g>')
+
+    # champion box
+    final_matches = rounds[-1]
+    champ, champ_known = 'TBD', False
+    if final_matches:
+        fm = final_matches[0]
+        hs, aw_s = fm.get('home_score'), fm.get('away_score')
+        if fm.get('status') == 'FINISHED' and hs is not None and aw_s is not None and hs != aw_s:
+            champ, champ_known = (fm['home'] if hs > aw_s else fm['away']), True
+        x_final_right = left_pad + (len(rounds) - 1) * (card_w + col_gap) + card_w
+        x_champ       = x_final_right + col_gap
+        y_champ       = slot_y(len(rounds) - 1, 0)
+        champ_border  = '#facc15' if champ_known else '#131e30'
+        champ_color   = '#facc15' if champ_known else '#3d4f6b'
+        parts.append(f'<path d="M{x_final_right},{y_champ} H{x_champ}" stroke="#1e2d45" stroke-width="1.5" fill="none"/>')
+        parts.append(f'<g transform="translate({x_champ},{y_champ-30})">')
+        parts.append(f'<rect width="{champ_w}" height="60" rx="10" fill="#0d1526" stroke="{champ_border}" stroke-width="1.5"/>')
+        parts.append(f'<text x="{champ_w/2}" y="26" font-size="18" text-anchor="middle">🏆</text>')
+        parts.append(f'<text x="{champ_w/2}" y="47" font-size="11" font-weight="800" fill="{champ_color}" text-anchor="middle" font-family="Inter, sans-serif">{esc(champ)}</text>')
+        parts.append('</g>')
+
+    parts.append('</svg>')
+
+    st.markdown(f'<div class="bracket-wrap">{"".join(parts)}</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="bracket-legend">
+        <span><span class="bracket-dot" style="background:#f8fafc"></span>Winner</span>
+        <span><span class="bracket-dot" style="background:#3d4f6b"></span>Eliminated</span>
+        <span><span class="bracket-dot" style="background:#facc15"></span>Champion</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_third_place_card(m):
+    home, away = m.get('home'), m.get('away')
+    hs, aws    = m.get('home_score'), m.get('away_score')
+    finished   = m.get('status') == 'FINISHED' and hs is not None and aws is not None
+    winner_side = match_winner(m)
+    home_cls   = 'card-winner' if winner_side == 'home' else 'card-loser' if winner_side == 'away' else ''
+    away_cls   = 'card-winner' if winner_side == 'away' else 'card-loser' if winner_side == 'home' else ''
+
+    if finished:
+        hs_disp, hp, aws_disp, ap = score_parts(m)
+        hp_html = f'<span class="card-score-pens">({hp})</span>' if hp is not None else ''
+        ap_html = f'<span class="card-score-pens">({ap})</span>' if ap is not None else ''
+        score_html = f'<div class="card-score-nums">{hp_html}<span class="card-score-num">{hs_disp}</span><span class="card-score-sep">–</span><span class="card-score-num">{aws_disp}</span>{ap_html}</div>'
+        badge = '<span class="badge-ft">PENS</span>' if m.get('went_to_penalties') else '<span class="badge-ft">FT</span>'
+    else:
+        score_html = '<div class="card-vs">VS</div>'
+        badge = '<span class="badge-upcoming">Upcoming</span>'
+
+    st.markdown('<div class="date-group">🥉 THIRD PLACE PLAYOFF</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="match-card" style="max-width:440px;margin:0 auto;">
+        <div class="card-body">
+            <div class="card-team-home {home_cls}">{home or 'TBD'}</div>
+            <div class="card-score-block">{score_html}</div>
+            <div class="card-team-away {away_cls}">{away or 'TBD'}</div>
+        </div>
+        <div class="card-footer">
+            <span class="card-time">{fmt_date_local(m['date']) if m.get('date') else ''}</span>
+            {badge}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 # ── HOME PAGE ──────────────────────────────────────────────────────────────
 def show_home():
     logo_path = os.path.join(os.path.dirname(__file__), 'logo.png')
@@ -676,11 +933,14 @@ def show_home():
                 accent   = hex_to_rgba(tc, 0.35)
 
                 if finished:
-                    hs, aws  = m['home_score'], m['away_score']
-                    home_cls = 'card-winner' if hs > aws else 'card-loser' if hs < aws else ''
-                    away_cls = 'card-winner' if aws > hs else 'card-loser' if aws < hs else ''
-                    score_html = f'<div class="card-score-nums"><span class="card-score-num">{hs}</span><span class="card-score-sep">–</span><span class="card-score-num">{aws}</span></div>'
-                    badge = '<span class="badge-ft">FT</span>'
+                    winner_side = match_winner(m)
+                    home_cls = 'card-winner' if winner_side == 'home' else 'card-loser' if winner_side == 'away' else ''
+                    away_cls = 'card-winner' if winner_side == 'away' else 'card-loser' if winner_side == 'home' else ''
+                    hs_disp, hp, aws_disp, ap = score_parts(m)
+                    hp_html = f'<span class="card-score-pens">({hp})</span>' if hp is not None else ''
+                    ap_html = f'<span class="card-score-pens">({ap})</span>' if ap is not None else ''
+                    score_html = f'<div class="card-score-nums">{hp_html}<span class="card-score-num">{hs_disp}</span><span class="card-score-sep">–</span><span class="card-score-num">{aws_disp}</span>{ap_html}</div>'
+                    badge = '<span class="badge-ft">PENS</span>' if m.get('went_to_penalties') else '<span class="badge-ft">FT</span>'
                 elif live:
                     home_cls = away_cls = ''
                     score_html = '<div class="card-vs" style="color:#4ade80">LIVE</div>'
@@ -743,15 +1003,27 @@ def show_home():
         render_grid([f for f in fixtures if f['stage'] == 'GROUP_STAGE'], "group")
 
     with tab_knockout:
-        ko = [f for f in fixtures if f['stage'] in knockout_stages]
-        if ko:
-            by_stage = {}
-            for f in ko: by_stage.setdefault(fmt_stage(f['stage']), []).append(f)
-            for s, ms in by_stage.items():
-                st.markdown(f'<div class="date-group">{s}</div>', unsafe_allow_html=True)
-                render_grid(ms, f"ko_{s}")
+        view_mode = st.segmented_control(
+            "View", ["🏆 Bracket", "📋 List"], default="🏆 Bracket",
+            label_visibility="collapsed", key="ko_view_mode",
+        )
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        if view_mode == "📋 List":
+            ko = [f for f in fixtures if f['stage'] in knockout_stages]
+            if ko:
+                by_stage = {}
+                for f in ko: by_stage.setdefault(fmt_stage(f['stage']), []).append(f)
+                for s, ms in by_stage.items():
+                    st.markdown(f'<div class="date-group">{s}</div>', unsafe_allow_html=True)
+                    render_grid(ms, f"ko_{s}")
+            else:
+                render_grid([], "knockout")
         else:
-            render_grid([], "knockout")
+            render_bracket_view(fixtures)
+            third_place = [f for f in fixtures if f['stage'] == 'THIRD_PLACE']
+            if third_place:
+                render_third_place_card(third_place[0])
 
 # ── FINISHED MATCH ─────────────────────────────────────────────────────────
 def show_finished_match(m, data):
@@ -764,30 +1036,35 @@ def show_finished_match(m, data):
 
     home_score   = m['home_score']
     away_score   = m['away_score']
-    winner       = home_name if home_score > away_score else away_name if away_score > home_score else None
-    result_text  = f"{winner} won" if winner else "Match drawn"
+    winner_side  = match_winner(m)
+    winner       = home_name if winner_side == 'home' else away_name if winner_side == 'away' else None
+    result_text  = f"{winner} won on penalties" if (winner and m.get('went_to_penalties')) else f"{winner} won" if winner else "Match drawn"
     actual_score = f"{home_score}-{away_score}"
     venue        = events.get('venue', '')
     stage_label  = events.get('stage', fmt_stage(m['stage']))
 
     c1_color = get_team_color(home_name, other_team=away_name)
     c2_color = get_team_color(away_name, other_team=home_name)
-    hs_color = '#4ade80' if home_score > away_score else '#f87171' if home_score < away_score else '#ffffff'
-    as_color = '#4ade80' if away_score > home_score else '#f87171' if away_score < home_score else '#ffffff'
+    hs_color = '#4ade80' if winner_side == 'home' else '#f87171' if winner_side == 'away' else '#ffffff'
+    as_color = '#4ade80' if winner_side == 'away' else '#f87171' if winner_side == 'home' else '#ffffff'
+    hs_score, hp, aws_score, ap = score_parts(m)
+    hp_html = f'<span class="hero-pens">({hp})</span>' if hp is not None else ''
+    ap_html = f'<span class="hero-pens">({ap})</span>' if ap is not None else ''
 
     st.markdown(f"""
     <div class="match-hero" style="border-top:3px solid {c1_color}">
         <div class="hero-meta">{stage_label}{f' · {venue}' if venue else ''} · {fmt_date_local(m['date'])}</div>
         <div class="hero-teams">{home_name} <span class="hero-vs">vs</span> {away_name}</div>
         <div class="hero-score">
-            <span style="color:{hs_color}">{home_score}</span>
+            {hp_html}<span style="color:{hs_color}">{hs_score}</span>
             <span class="hero-score-sep"> – </span>
-            <span style="color:{as_color}">{away_score}</span>
+            <span style="color:{as_color}">{aws_score}</span>{ap_html}
         </div>
+        {'<div class="hero-meta" style="margin-top:-8px;margin-bottom:16px">Decided on penalties</div>' if m.get('went_to_penalties') else ''}
         <div class="hero-badges">
-            {hero_badge(home_score, away_score, 'home')}
+            {hero_badge(winner_side, 'home')}
             <span class="hero-result">{result_text}</span>
-            {hero_badge(home_score, away_score, 'away')}
+            {hero_badge(winner_side, 'away')}
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -909,6 +1186,7 @@ def show_finished_match(m, data):
     """, unsafe_allow_html=True)
 
     render_donut_with_boxes(home_name, away_name, p1, pd_, p2)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2)
 
     sec_header("Score Probability Heatmap")
     st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
@@ -957,6 +1235,7 @@ def show_upcoming_match(m, data):
 
     sec_header("Win Probability · 50,000 Simulations")
     render_donut_with_boxes(home_name, away_name, p1, pd_, p2)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2)
 
     sec_header("Expected Goals (xG)")
     col1, col2 = st.columns(2)
