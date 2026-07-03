@@ -4,8 +4,21 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timezone, date
 import os
+import re
 
 BACKEND = os.getenv("BACKEND_URL", "http://127.0.0.1:5002")
+
+# ── Fix: Markdown treats 4+ leading spaces as a code block, even with       ─
+# ── unsafe_allow_html=True. Our HTML strings are indented for readability  ─
+# ── in the Python source, so we strip leading whitespace on every line     ─
+# ── before it reaches the Markdown parser. This patches every HTML render  ─
+# ── in the app in one place instead of touching each f-string individually.─
+_markdown = st.markdown
+def _html_safe_markdown(body, *args, **kwargs):
+    if kwargs.get("unsafe_allow_html") and isinstance(body, str):
+        body = re.sub(r'(?m)^[ \t]+', '', body)
+    return _markdown(body, *args, **kwargs)
+st.markdown = _html_safe_markdown
 
 st.set_page_config(
     page_title="Ballr 2.0",
