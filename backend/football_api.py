@@ -1,4 +1,6 @@
 import os
+import json
+import threading
 import requests
 from cachetools import TTLCache, cached
 from dotenv import load_dotenv
@@ -10,11 +12,40 @@ SERPAPI_KEY = os.getenv('SERPAPI_KEY')
 BASE_URL = 'https://api.football-data.org/v4'
 HEADERS = {'X-Auth-Token': API_KEY}
 
-# Standard cache — 5 min TTL
+# Standard cache — 5 min TTL. Fixtures/standings/stats change during the
+# tournament, so a short expiry keeps things fresh without hammering the API.
 cache = TTLCache(maxsize=128, ttl=300)
 
-# Goal scorer cache — 24hr TTL (never waste SerpAPI calls)
-events_cache = TTLCache(maxsize=128, ttl=86400)
+# ── Goal scorer cache: permanent, disk-backed ────────────────────────────────
+# A finished match's goal scorers never change, so there's no reason to ever
+# expire this — and no reason to lose it on every restart/redeploy either.
+# Instead of an in-memory TTLCache (which resets to empty every time the
+# process restarts, silently re-triggering SerpAPI calls), this cache is
+# written to a JSON file so it survives restarts within the same container.
+#
+# Note: if your host uses an ephemeral filesystem across *redeploys*
+# (Railway's free/hobby tier does, unless you attach a persistent volume),
+# this file will still reset on redeploy — but it protects you from the far
+# more common case of simple process restarts/crashes.
+EVENTS_CACHE_FILE = os.path.join(os.path.dirname(__file__), 'match_events_cache.json')
+_events_cache_lock = threading.Lock()
+
+def _load_events_cache():
+    try:
+        with open(EVENTS_CACHE_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _save_events_cache(cache_dict):
+    # Write to a temp file then atomically replace, so a crash mid-write
+    # can't corrupt the cache file.
+    tmp_path = EVENTS_CACHE_FILE + '.tmp'
+    with open(tmp_path, 'w') as f:
+        json.dump(cache_dict, f)
+    os.replace(tmp_path, EVENTS_CACHE_FILE)
+
+_events_disk_cache = _load_events_cache()
 
 COMP_WEIGHTS = {
     'FIFA World Cup':           1.0,
@@ -143,12 +174,24 @@ def _default_stats():
         'sample_size': 0,
     }
 
-@cached(events_cache)
 def get_match_events(home_team, away_team):
-    """Fetch goal scorers from Google via SerpAPI. Cached 24hrs."""
+    """
+    Fetch goal scorers from Google via SerpAPI.
+    Cached permanently to disk — a finished match's scorers never change, so
+    once we have a good result there's no reason to ever re-fetch it, even
+    across restarts. Failed/empty lookups are NOT cached, so a match whose
+    data hasn't appeared on Google yet will simply be retried next time.
+    """
+    cache_key = f"{home_team}|{away_team}"
+
+    with _events_cache_lock:
+        if cache_key in _events_disk_cache:
+            return _events_disk_cache[cache_key]
+
+    if not SERPAPI_KEY:
+        return None
+
     try:
-        if not SERPAPI_KEY:
-            return None
         r = requests.get(
             'https://serpapi.com/search.json',
             params={
@@ -188,7 +231,12 @@ def get_match_events(home_team, away_team):
 
         result['venue'] = spotlight.get('venue', '')
         result['stage'] = spotlight.get('stage', '')
+
+        with _events_cache_lock:
+            _events_disk_cache[cache_key] = result
+            _save_events_cache(_events_disk_cache)
+
         return result
 
-    except:
+    except Exception:
         return None
