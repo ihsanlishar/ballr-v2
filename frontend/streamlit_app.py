@@ -8,6 +8,25 @@ import re
 from zoneinfo import ZoneInfo
 BACKEND = os.getenv("BACKEND_URL", "http://127.0.0.1:5002")
 
+# ── Frontend caching ──────────────────────────────────────────────────────
+# Streamlit reruns the entire script on almost every interaction (button
+# clicks, widget changes, etc.), which without caching means every rerun
+# re-hits the backend — even for data that hasn't changed. These caches are
+# per-Streamlit-process (shared across all users hitting this deployment,
+# not per-browser-session), so they also reduce load on the Flask backend
+# itself under concurrent traffic, on top of the backend's own caching.
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_fixtures():
+    r = requests.get(f"{BACKEND}/fixtures", timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_match_data(home_id, away_id):
+    r = requests.get(f"{BACKEND}/match/{home_id}/{away_id}", timeout=20)
+    r.raise_for_status()
+    return r.json()
+
 # ── Fix: Markdown treats 4+ leading spaces as a code block, even with       ─
 # ── unsafe_allow_html=True. Our HTML strings are indented for readability  ─
 # ── in the Python source, so we strip leading whitespace on every line     ─
@@ -958,8 +977,7 @@ def show_home():
 
     with st.spinner(""):
         try:
-            r = requests.get(f"{BACKEND}/fixtures", timeout=10)
-            fixtures = r.json()
+            fixtures = fetch_fixtures()
         except:
             st.error("Can't reach backend.")
             return
@@ -1348,11 +1366,7 @@ def show_match():
 
     with st.spinner("Loading match data..."):
         try:
-            r = requests.get(
-                f"{BACKEND}/match/{m['home_id']}/{m['away_id']}",
-                timeout=20
-            )
-            data = r.json()
+            data = fetch_match_data(m['home_id'], m['away_id'])
         except:
             st.error("Failed to load match data.")
             return

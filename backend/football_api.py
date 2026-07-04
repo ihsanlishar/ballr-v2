@@ -1,8 +1,8 @@
 import os
 import json
+import time
 import threading
 import requests
-from cachetools import TTLCache, cached
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,9 +12,54 @@ SERPAPI_KEY = os.getenv('SERPAPI_KEY')
 BASE_URL = 'https://api.football-data.org/v4'
 HEADERS = {'X-Auth-Token': API_KEY}
 
-# Standard cache — 5 min TTL. Fixtures/standings/stats change during the
-# tournament, so a short expiry keeps things fresh without hammering the API.
-cache = TTLCache(maxsize=128, ttl=300)
+# ── Single-flight TTL cache ──────────────────────────────────────────────────
+# football-data.org's free tier caps requests per minute. A plain TTL cache
+# (the old approach) only prevents *repeat* calls once something is cached —
+# it does nothing to stop a "cache stampede": if the cache is cold or has
+# just expired and 6+ people load the page in the same second, every one of
+# them sees a cache miss and fires its own upstream call simultaneously,
+# blowing through the rate limit instantly. This wraps each cache-miss in a
+# per-key lock, so the first caller fetches while everyone else waiting on
+# that same key blocks briefly and then reuses that one result — turning a
+# burst of N simultaneous requests into exactly 1 upstream call.
+#
+# It also falls back to the last good cached value if the upstream call
+# fails (e.g. a 429 rate-limit response) instead of raising — so a brief
+# rate-limit hit shows slightly stale data rather than a blank page.
+def singleflight_ttl_cache(ttl):
+    def decorator(func):
+        store = {}                       # key -> (value, expires_at)
+        locks = {}                       # key -> threading.Lock
+        locks_guard = threading.Lock()   # protects the `locks` dict itself
+
+        def wrapper(*args, **kwargs):
+            key = (args, tuple(sorted(kwargs.items())))
+
+            entry = store.get(key)
+            if entry and entry[1] > time.time():
+                return entry[0]
+
+            with locks_guard:
+                key_lock = locks.setdefault(key, threading.Lock())
+
+            with key_lock:
+                # Re-check after acquiring the lock — another thread may have
+                # already refreshed this key while we were waiting on it.
+                entry = store.get(key)
+                if entry and entry[1] > time.time():
+                    return entry[0]
+                try:
+                    value = func(*args, **kwargs)
+                    store[key] = (value, time.time() + ttl)
+                    return value
+                except Exception:
+                    if entry:
+                        return entry[0]  # serve stale data rather than fail
+                    raise  # nothing cached at all yet — nothing to fall back to
+
+        wrapper.cache_clear = lambda: store.clear()
+        return wrapper
+    return decorator
 
 # ── Goal scorer cache: permanent, disk-backed ────────────────────────────────
 # A finished match's goal scorers never change, so there's no reason to ever
@@ -64,27 +109,31 @@ COMP_WEIGHTS = {
 }
 DEFAULT_COMP_WEIGHT = 0.65
 
-@cached(cache)
+@singleflight_ttl_cache(ttl=300)
 def get_fixtures():
-    r = requests.get(f'{BASE_URL}/competitions/WC/matches', headers=HEADERS)
+    r = requests.get(f'{BASE_URL}/competitions/WC/matches', headers=HEADERS, timeout=15)
+    r.raise_for_status()
     return r.json().get('matches', [])
 
-@cached(cache)
+@singleflight_ttl_cache(ttl=300)
 def get_team_stats(team_id):
     r = requests.get(
         f'{BASE_URL}/teams/{team_id}/matches?limit=20&status=FINISHED',
-        headers=HEADERS
+        headers=HEADERS, timeout=15
     )
+    r.raise_for_status()
     return r.json()
 
-@cached(cache)
+@singleflight_ttl_cache(ttl=300)
 def get_standings():
-    r = requests.get(f'{BASE_URL}/competitions/WC/standings', headers=HEADERS)
+    r = requests.get(f'{BASE_URL}/competitions/WC/standings', headers=HEADERS, timeout=15)
+    r.raise_for_status()
     return r.json()
 
-@cached(cache)
+@singleflight_ttl_cache(ttl=300)
 def get_top_scorers():
-    r = requests.get(f'{BASE_URL}/competitions/WC/scorers', headers=HEADERS)
+    r = requests.get(f'{BASE_URL}/competitions/WC/scorers', headers=HEADERS, timeout=15)
+    r.raise_for_status()
     return r.json()
 
 def parse_team_form(matches_data, team_id):
