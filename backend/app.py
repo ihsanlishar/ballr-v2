@@ -19,40 +19,28 @@ def fixtures():
     matches = get_fixtures()
     result = []
     for m in matches:
-        score    = m.get('score', {}) or {}
+        score    = m.get('score', {})
         duration = score.get('duration', 'REGULAR')
-        reg      = score.get('regularTime') or score.get('fullTime') or {}
-        extra    = score.get('extraTime') or {}
-        pens     = score.get('penalties') or {}
+        ft       = score.get('fullTime', {})
+        pens     = score.get('penalties', {})
 
-        home_score = reg.get('home')
-        away_score = reg.get('away')
-
-        # If the match went to extra time (with or without a shootout), the
-        # "played" score is regulation + extra time. The API's fullTime field
-        # adds penalty goals on top of that for shootout matches, so we build
-        # the real score from regularTime/extraTime instead of using fullTime
-        # directly — otherwise penalty goals get counted as if they were
-        # normal goals scored during the match.
-        if duration in ('EXTRA_TIME', 'PENALTY_SHOOTOUT') and extra.get('home') is not None:
-            home_score = (home_score or 0) + (extra.get('home') or 0)
-            away_score = (away_score or 0) + (extra.get('away') or 0)
+        went_to_pens = duration == 'PENALTY_SHOOTOUT'
 
         result.append({
-            'id':                 m['id'],
-            'home':               m['homeTeam']['name'],
-            'away':               m['awayTeam']['name'],
-            'home_id':            m['homeTeam']['id'],
-            'away_id':            m['awayTeam']['id'],
-            'date':               m['utcDate'],
-            'status':             m['status'],
-            'home_score':         home_score,
-            'away_score':         away_score,
-            'went_to_penalties':  duration == 'PENALTY_SHOOTOUT',
-            'home_penalties':     pens.get('home'),
-            'away_penalties':     pens.get('away'),
-            'winner':             score.get('winner'),
-            'stage':              m['stage'],
+            'id':              m['id'],
+            'home':            m['homeTeam']['name'],
+            'away':            m['awayTeam']['name'],
+            'home_id':         m['homeTeam']['id'],
+            'away_id':         m['awayTeam']['id'],
+            'date':            m['utcDate'],
+            'status':          m['status'],
+            'home_score':      ft.get('home'),
+            'away_score':      ft.get('away'),
+            'went_to_penalties': went_to_pens,
+            'home_penalties':  pens.get('home') if went_to_pens else None,
+            'away_penalties':  pens.get('away') if went_to_pens else None,
+            'duration':        duration,
+            'stage':           m['stage'],
         })
     return jsonify(result)
 
