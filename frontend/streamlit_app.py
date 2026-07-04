@@ -759,9 +759,10 @@ def render_bracket_view(fixtures):
             rounds.pop()
             break
 
-    base_pitch = 64
+    n_first = len(all_rounds[0])
+    base_pitch = max(64, 900 // max(n_first, 1))  # auto-scale pitch to fit all cards
     card_w, card_h = 172, 46
-    col_gap, left_pad, top_pad = 64, 24, 46
+    col_gap, left_pad, top_pad = 80, 24, 46
     champ_w = 150
 
     def esc(s):
@@ -800,9 +801,11 @@ def render_bracket_view(fixtures):
             if team:
                 winner_y_by_name[team] = ys[i]
 
-    total_h = max(positions[0][-1] if positions[0] else 0,
-                  max((y for ys in positions for y in ys), default=0)) + base_pitch / 2 + 30
-    total_w = left_pad + len(rounds) * (card_w + col_gap) + champ_w + 20
+    total_h = max(
+        positions[0][-1] if positions[0] else 0,
+        max((y for ys in positions for y in ys), default=0)
+    ) + base_pitch / 2 + 60
+    total_h = max(total_h, n_first * base_pitch + top_pad + 60)
 
     def team_row(name, score, pens, is_winner, is_loser, y_off, color):
         if not name:
