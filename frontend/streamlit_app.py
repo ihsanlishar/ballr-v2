@@ -723,23 +723,12 @@ def render_key_factors(home_team, away_team, home_stats, away_stats, sim):
 
 # ── Bracket visualization ────────────────────────────────────────────────────
 def render_bracket_view(fixtures):
-    """
-    Renders the knockout stage as a connected tournament tree (SVG), built
-    purely from data already in `fixtures` — no extra API calls.
-
-    Rounds are linked by matching each match's teams against the *winner*
-    of matches in the previous round, rather than assuming a complete,
-    index-paired 16/8/4/2/1 structure. This matters because the fixtures
-    feed can (and does) return an incomplete set of matches for a round —
-    e.g. 14 of 16 Round of 32 games — and naively pairing by list position
-    silently connects the wrong matches together once that happens. Name
-    matching stays correct regardless of gaps, ordering, or missing data.
-    """
     stage_order = ['LAST_32', 'LAST_16', 'QUARTER_FINALS', 'SEMI_FINALS', 'FINAL']
     stage_names = {
         'LAST_32': 'Round of 32', 'LAST_16': 'Round of 16',
         'QUARTER_FINALS': 'Quarterfinals', 'SEMI_FINALS': 'Semifinals', 'FINAL': 'Final',
     }
+
     all_rounds = [[f for f in fixtures if f['stage'] == s] for s in stage_order]
 
     if not all_rounds[0]:
@@ -749,106 +738,107 @@ def render_bracket_view(fixtures):
             unsafe_allow_html=True)
         return
 
-    # Only render columns for rounds that actually have data yet — trailing
-    # empty rounds (e.g. Semifinals before Quarterfinals are even played)
-    # are simply not reached, rather than drawn as blank placeholder columns.
+    # Only include rounds that have at least one match
     rounds = []
     for r in all_rounds:
-        rounds.append(r)
-        if not r:
-            rounds.pop()
-            break
+        if r:
+            rounds.append(r)
 
-    n_first = len(all_rounds[0])
-    base_pitch = max(64, 900 // max(n_first, 1))  # auto-scale pitch to fit all cards
-    card_w, card_h = 172, 46
-    col_gap, left_pad, top_pad = 80, 24, 46
-    champ_w = 150
+    n_first   = len(rounds[0])       # should be 16
+    card_w    = 172
+    card_h    = 46
+    col_gap   = 80
+    left_pad  = 24
+    top_pad   = 46
+    champ_w   = 150
+    row_h     = 64                   # fixed height per card slot in round 0
+
+    # Total SVG height is driven by round 0
+    total_h = top_pad + n_first * row_h + 40
+    total_w = left_pad + len(rounds) * (card_w + col_gap) + champ_w + 20
 
     def esc(s):
         return (s or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
-    # ── Layout: position round 0 evenly, then position every later match at
-    # the average y of whichever parent match(es) we can actually identify
-    # by winner name. A match with no identifiable parent (data gap, bye,
-    # or a team whose earlier match simply isn't in the feed yet) falls
-    # back to even spacing within its own round instead of breaking layout.
-    positions = []          # positions[r][i] = y-center of rounds[r][i]
-    winner_y_by_name = {}   # team name -> y-center of the match they won
+    # y-center of each card in round 0
+    def r0_y(i):
+        return top_pad + row_h * i + row_h / 2
 
-    y0 = [top_pad + base_pitch / 2 + i * base_pitch for i in range(len(rounds[0]))]
-    positions.append(y0)
+    # Build winner name → y-center mapping
+    winner_y = {}
+
+    # Round 0 positions
+    pos = [[r0_y(i) for i in range(len(rounds[0]))]]
     for i, m in enumerate(rounds[0]):
         w = match_winner(m)
         team = m.get('home') if w == 'home' else m.get('away') if w == 'away' else None
         if team:
-            winner_y_by_name[team] = y0[i]
+            winner_y[team] = pos[0][i]
 
+    # Subsequent round positions — average of parent y positions
     for r in range(1, len(rounds)):
         ys = []
-        fallback_pitch = base_pitch * (2 ** r)
+        fallback_spacing = row_h * (2 ** r)
         for i, m in enumerate(rounds[r]):
             home, away = m.get('home'), m.get('away')
-            parent_ys = [winner_y_by_name[t] for t in (home, away) if t in winner_y_by_name]
-            if parent_ys:
-                ys.append(sum(parent_ys) / len(parent_ys))
+            parents = [winner_y[t] for t in (home, away) if t and t in winner_y]
+            if parents:
+                ys.append(sum(parents) / len(parents))
             else:
-                ys.append(top_pad + fallback_pitch / 2 + i * fallback_pitch)
-        positions.append(ys)
+                ys.append(top_pad + fallback_spacing / 2 + i * fallback_spacing)
+        pos.append(ys)
         for i, m in enumerate(rounds[r]):
             w = match_winner(m)
             team = m.get('home') if w == 'home' else m.get('away') if w == 'away' else None
             if team:
-                winner_y_by_name[team] = ys[i]
-
-    raw_h = max(
-        positions[0][-1] if positions[0] else 0,
-        max((y for ys in positions for y in ys), default=0)
-    ) + base_pitch / 2 + 60
-    total_h = max(raw_h, n_first * base_pitch + top_pad + 60)
-    total_w = left_pad + len(rounds) * (card_w + col_gap) + champ_w + 20
+                winner_y[team] = ys[i]
 
     def team_row(name, score, pens, is_winner, is_loser, y_off, color):
         if not name:
             return f'<text x="14" y="{y_off}" font-size="10" fill="#3d4f6b" font-style="italic">TBD</text>'
-        disp = esc(name if len(name) <= 17 else name[:16] + '…')
-        weight = '800' if is_winner else '500'
-        fill   = '#f8fafc' if is_winner else ('#3d4f6b' if is_loser else '#cbd5e1')
+        disp      = esc(name if len(name) <= 17 else name[:16] + '…')
+        weight    = '800' if is_winner else '500'
+        fill      = '#f8fafc' if is_winner else ('#3d4f6b' if is_loser else '#cbd5e1')
         score_txt = '' if score is None else str(score)
-        pens_txt  = f'<tspan font-size="8" font-weight="600" fill="{fill}" opacity="0.75" dx="3">({pens})</tspan>' if pens is not None else ''
+        pens_txt  = (f'<tspan font-size="8" font-weight="600" fill="{fill}" '
+                     f'opacity="0.75" dx="3">({pens})</tspan>') if pens is not None else ''
         return (
             f'<circle cx="6" cy="{y_off-4}" r="3" fill="{color}"/>'
-            f'<text x="16" y="{y_off}" font-size="10.5" font-weight="{weight}" fill="{fill}" font-family="Inter, sans-serif">{disp}</text>'
-            f'<text x="{card_w-12}" y="{y_off}" font-size="11" font-weight="800" fill="{fill}" text-anchor="end" font-family="Inter, sans-serif">{score_txt}{pens_txt}</text>'
+            f'<text x="16" y="{y_off}" font-size="10.5" font-weight="{weight}" '
+            f'fill="{fill}" font-family="Inter, sans-serif">{disp}</text>'
+            f'<text x="{card_w-12}" y="{y_off}" font-size="11" font-weight="800" '
+            f'fill="{fill}" text-anchor="end" font-family="Inter, sans-serif">'
+            f'{score_txt}{pens_txt}</text>'
         )
 
-    parts = [f'<svg viewBox="0 0 {total_w} {total_h}" xmlns="http://www.w3.org/2000/svg" width="100%" height="{total_h}">']
+    parts = [f'<svg viewBox="0 0 {total_w} {total_h}" '
+             f'xmlns="http://www.w3.org/2000/svg" width="100%" height="{total_h}">']
 
-    # round headers
+    # Round headers
     for r in range(len(rounds)):
         x = left_pad + r * (card_w + col_gap)
         parts.append(
-            f'<text x="{x+card_w/2}" y="20" font-size="9.5" font-weight="700" letter-spacing="1.5" '
-            f'fill="#3d4f6b" text-anchor="middle" font-family="Inter, sans-serif">{stage_names[stage_order[r]].upper()}</text>'
+            f'<text x="{x + card_w/2}" y="20" font-size="9.5" font-weight="700" '
+            f'letter-spacing="1.5" fill="#3d4f6b" text-anchor="middle" '
+            f'font-family="Inter, sans-serif">{stage_names[stage_order[r]].upper()}</text>'
         )
 
-    # connectors — drawn between each match and whichever parent match(es)
-    # we could actually identify by winner name (0, 1, or 2 of them)
-    winner_pos_by_name = {}
+    # Connectors
+    winner_pos = {}
     for i, m in enumerate(rounds[0]):
         w = match_winner(m)
         team = m.get('home') if w == 'home' else m.get('away') if w == 'away' else None
         if team:
-            winner_pos_by_name[team] = positions[0][i]
+            winner_pos[team] = pos[0][i]
 
     for r in range(1, len(rounds)):
         x_prev_right = left_pad + (r - 1) * (card_w + col_gap) + card_w
         x_mid        = x_prev_right + col_gap / 2
         x_next_left  = left_pad + r * (card_w + col_gap)
         for i, m in enumerate(rounds[r]):
-            home, away = m.get('home'), m.get('away')
-            parent_ys = sorted(winner_pos_by_name[t] for t in (home, away) if t in winner_pos_by_name)
-            ym = positions[r][i]
+            home, away  = m.get('home'), m.get('away')
+            parent_ys   = sorted(winner_pos[t] for t in (home, away) if t and t in winner_pos)
+            ym          = pos[r][i]
             if len(parent_ys) == 2:
                 y1, y2 = parent_ys
                 parts.append(f'<path d="M{x_prev_right},{y1} H{x_mid}" stroke="#1e2d45" stroke-width="1.5" fill="none"/>')
@@ -861,24 +851,24 @@ def render_bracket_view(fixtures):
             w = match_winner(m)
             team = m.get('home') if w == 'home' else m.get('away') if w == 'away' else None
             if team:
-                winner_pos_by_name[team] = positions[r][i]
+                winner_pos[team] = pos[r][i]
 
-    # match cards
+    # Match cards
     for r, ms in enumerate(rounds):
         x = left_pad + r * (card_w + col_gap)
         for i, m in enumerate(ms):
-            y = positions[r][i] - card_h / 2
-            home, away = m.get('home'), m.get('away')
-            hs, aw_s   = m.get('home_score'), m.get('away_score')
-            finished   = m.get('status') == 'FINISHED' and hs is not None and aw_s is not None
+            y           = pos[r][i] - card_h / 2
+            home, away  = m.get('home'), m.get('away')
+            hs, aw_s    = m.get('home_score'), m.get('away_score')
+            finished    = m.get('status') == 'FINISHED' and hs is not None
             winner_side = match_winner(m)
-            home_win   = winner_side == 'home'
-            away_win   = winner_side == 'away'
-            home_pens  = m.get('home_penalties') if m.get('went_to_penalties') else None
-            away_pens  = m.get('away_penalties') if m.get('went_to_penalties') else None
-            hc = get_team_color(home, other_team=away) if home else '#1e2d45'
-            ac = get_team_color(away, other_team=home) if away else '#1e2d45'
-            border = '#131e30' if not finished else '#1e3a5f'
+            home_win    = winner_side == 'home'
+            away_win    = winner_side == 'away'
+            home_pens   = m.get('home_penalties') if m.get('went_to_penalties') else None
+            away_pens   = m.get('away_penalties') if m.get('went_to_penalties') else None
+            hc          = get_team_color(home, other_team=away) if home else '#1e2d45'
+            ac          = get_team_color(away, other_team=home) if away else '#1e2d45'
+            border      = '#1e3a5f' if finished else '#131e30'
 
             parts.append(f'<g transform="translate({x},{y})">')
             parts.append(f'<rect width="{card_w}" height="{card_h}" rx="8" fill="#0d1526" stroke="{border}" stroke-width="1"/>')
@@ -887,20 +877,15 @@ def render_bracket_view(fixtures):
             parts.append(team_row(away, aw_s, away_pens, away_win, home_win, card_h - 7, ac))
             parts.append('</g>')
 
-    # champion box — only shown once the last rendered round is the Final
+    # Champion box
     if stage_order[len(rounds) - 1] == 'FINAL' and rounds[-1]:
-        fm = rounds[-1][0]
-        hs, aw_s = fm.get('home_score'), fm.get('away_score')
-        champ, champ_known = 'TBD', False
-        w = match_winner(fm)
-        if w == 'home':
-            champ, champ_known = fm['home'], True
-        elif w == 'away':
-            champ, champ_known = fm['away'], True
-
+        fm   = rounds[-1][0]
+        w    = match_winner(fm)
+        champ       = fm['home'] if w == 'home' else fm['away'] if w == 'away' else 'TBD'
+        champ_known = w in ('home', 'away')
         x_final_right = left_pad + (len(rounds) - 1) * (card_w + col_gap) + card_w
         x_champ       = x_final_right + col_gap
-        y_champ       = positions[-1][0]
+        y_champ       = pos[-1][0]
         champ_border  = '#facc15' if champ_known else '#131e30'
         champ_color   = '#facc15' if champ_known else '#3d4f6b'
         parts.append(f'<path d="M{x_final_right},{y_champ} H{x_champ}" stroke="#1e2d45" stroke-width="1.5" fill="none"/>')
