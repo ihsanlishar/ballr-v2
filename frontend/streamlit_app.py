@@ -801,11 +801,11 @@ def render_bracket_view(fixtures):
             if team:
                 winner_y_by_name[team] = ys[i]
 
-    total_h = max(
+    raw_h = max(
         positions[0][-1] if positions[0] else 0,
         max((y for ys in positions for y in ys), default=0)
     ) + base_pitch / 2 + 60
-    total_h = max(total_h, n_first * base_pitch + top_pad + 60)
+    total_h = max(raw_h, n_first * base_pitch + top_pad + 60)
 
     def team_row(name, score, pens, is_winner, is_loser, y_off, color):
         if not name:
