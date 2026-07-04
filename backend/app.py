@@ -22,25 +22,34 @@ def fixtures():
         score    = m.get('score', {})
         duration = score.get('duration', 'REGULAR')
         ft       = score.get('fullTime', {})
+        rt       = score.get('regularTime', {})
         pens     = score.get('penalties', {})
 
         went_to_pens = duration == 'PENALTY_SHOOTOUT'
 
+        # Use regularTime score for penalty matches, fullTime for normal
+        if went_to_pens and rt.get('home') is not None:
+            display_home = rt.get('home')
+            display_away = rt.get('away')
+        else:
+            display_home = ft.get('home')
+            display_away = ft.get('away')
+
         result.append({
-            'id':              m['id'],
-            'home':            m['homeTeam']['name'],
-            'away':            m['awayTeam']['name'],
-            'home_id':         m['homeTeam']['id'],
-            'away_id':         m['awayTeam']['id'],
-            'date':            m['utcDate'],
-            'status':          m['status'],
-            'home_score':      ft.get('home'),
-            'away_score':      ft.get('away'),
+            'id':                m['id'],
+            'home':              m['homeTeam']['name'],
+            'away':              m['awayTeam']['name'],
+            'home_id':           m['homeTeam']['id'],
+            'away_id':           m['awayTeam']['id'],
+            'date':              m['utcDate'],
+            'status':            m['status'],
+            'home_score':        display_home,
+            'away_score':        display_away,
             'went_to_penalties': went_to_pens,
-            'home_penalties':  pens.get('home') if went_to_pens else None,
-            'away_penalties':  pens.get('away') if went_to_pens else None,
-            'duration':        duration,
-            'stage':           m['stage'],
+            'home_penalties':    pens.get('home') if went_to_pens else None,
+            'away_penalties':    pens.get('away') if went_to_pens else None,
+            'duration':          duration,
+            'stage':             m['stage'],
         })
     return jsonify(result)
 
