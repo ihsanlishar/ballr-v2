@@ -1051,27 +1051,18 @@ def show_home():
         render_grid([f for f in fixtures if f['stage'] == 'GROUP_STAGE'], "group")
 
     with tab_knockout:
-        view_mode = st.segmented_control(
-            "View", ["🏆 Bracket", "📋 List"], default="🏆 Bracket",
-            label_visibility="collapsed", key="ko_view_mode",
-        )
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        ko = [f for f in fixtures if f["stage"] in knockout_stages]
 
-        if view_mode == "📋 List":
-            ko = [f for f in fixtures if f['stage'] in knockout_stages]
-            if ko:
-                by_stage = {}
-                for f in ko: by_stage.setdefault(fmt_stage(f['stage']), []).append(f)
-                for s, ms in by_stage.items():
-                    st.markdown(f'<div class="date-group">{s}</div>', unsafe_allow_html=True)
-                    render_grid(ms, f"ko_{s}")
-            else:
-                render_grid([], "knockout")
+        if ko:
+            by_stage = {}
+            for f in ko:
+                by_stage.setdefault(fmt_stage(f["stage"]), []).append(f)
+
+            for s, ms in by_stage.items():
+                st.markdown(f'<div class="date-group">{s}</div>', unsafe_allow_html=True)
+                render_grid(ms, f"ko_{s}")
         else:
-            render_bracket_view(fixtures)
-            third_place = [f for f in fixtures if f['stage'] == 'THIRD_PLACE']
-            if third_place:
-                render_third_place_card(third_place[0])
+            render_grid([], "knockout")
 
 # ── FINISHED MATCH ─────────────────────────────────────────────────────────
 def show_finished_match(m, data):
