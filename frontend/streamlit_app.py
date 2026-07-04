@@ -806,6 +806,7 @@ def render_bracket_view(fixtures):
         max((y for ys in positions for y in ys), default=0)
     ) + base_pitch / 2 + 60
     total_h = max(raw_h, n_first * base_pitch + top_pad + 60)
+    total_w = left_pad + len(rounds) * (card_w + col_gap) + champ_w + 20
 
     def team_row(name, score, pens, is_winner, is_loser, y_off, color):
         if not name:
