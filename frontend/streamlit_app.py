@@ -5,7 +5,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timezone, date
 import os
 import re
-
+from zoneinfo import ZoneInfo
 BACKEND = os.getenv("BACKEND_URL", "http://127.0.0.1:5002")
 
 # ── Fix: Markdown treats 4+ leading spaces as a code block, even with       ─
@@ -288,10 +288,7 @@ if 'selected_match' not in st.session_state:
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 def get_local_tz():
-    try:
-        return datetime.now().astimezone().tzinfo
-    except:
-        return timezone.utc
+    return ZoneInfo("America/Los_Angeles")
 
 def fmt_date_local(iso):
     try:
@@ -917,7 +914,7 @@ def show_home():
             return
 
     fixtures = [f for f in fixtures if f['home'] and f['away']]
-    today    = date.today()
+    today    = datetime.now(ZoneInfo("America/Los_Angeles")).date()
     knockout_stages = {'LAST_32','LAST_16','QUARTER_FINALS','SEMI_FINALS','THIRD_PLACE','FINAL'}
 
     def render_grid(matches, tab_key):
