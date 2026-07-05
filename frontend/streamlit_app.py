@@ -299,6 +299,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ── Session state ──────────────────────────────────────────────────────────
+if 'page' not in st.session_state:
+    st.session_state.page = 'home'
+if 'selected_match' not in st.session_state:
+    st.session_state.selected_match = None
+
 # ── Helpers ───────────────────────────────────────────────────────────────
 def get_local_tz():
     return ZoneInfo("America/Los_Angeles")
@@ -953,9 +959,7 @@ def render_third_place_card(m):
     """, unsafe_allow_html=True)
 
 # ── HOME PAGE ──────────────────────────────────────────────────────────────
-KNOCKOUT_STAGES = {'LAST_32','LAST_16','QUARTER_FINALS','SEMI_FINALS','THIRD_PLACE','FINAL'}
-
-def ballr_header():
+def show_home():
     logo_path = os.path.join(os.path.dirname(__file__), 'logo.png')
     col_logo, col_title = st.columns([1, 10])
     with col_logo:
@@ -971,71 +975,6 @@ def ballr_header():
             <div class="ballr-sub">2026 FIFA World Cup · Match Predictor</div>
         </div>""", unsafe_allow_html=True)
 
-def render_grid(matches, tab_key):
-    if not matches:
-        st.markdown('<div class="empty-state"><div class="empty-icon">📅</div>No matches found.</div>', unsafe_allow_html=True)
-        return
-    cols = st.columns(3)
-    for i, m in enumerate(matches):
-        with cols[i % 3]:
-            finished = m['status'] == 'FINISHED'
-            live     = m['status'] in ('IN_PLAY','PAUSED')
-            tc       = get_team_color(m['home'], other_team=m['away'])
-            accent   = hex_to_rgba(tc, 0.35)
-
-            if finished:
-                winner_side = match_winner(m)
-                home_cls = 'card-winner' if winner_side == 'home' else 'card-loser' if winner_side == 'away' else ''
-                away_cls = 'card-winner' if winner_side == 'away' else 'card-loser' if winner_side == 'home' else ''
-                hs_disp, hp, aws_disp, ap = score_parts(m)
-                hp_html = f'<span class="card-score-pens">({hp})</span>' if hp is not None else ''
-                ap_html = f'<span class="card-score-pens">({ap})</span>' if ap is not None else ''
-                score_html = f'<div class="card-score-nums">{hp_html}<span class="card-score-num">{hs_disp}</span><span class="card-score-sep">–</span><span class="card-score-num">{aws_disp}</span>{ap_html}</div>'
-                badge = '<span class="badge-ft">PENS</span>' if m.get('went_to_penalties') else '<span class="badge-ft">FT</span>'
-            elif live:
-                home_cls = away_cls = ''
-                score_html = '<div class="card-vs" style="color:#4ade80">LIVE</div>'
-                badge = '<span class="badge-live">● LIVE</span>'
-            else:
-                home_cls = away_cls = ''
-                score_html = '<div class="card-vs">VS</div>'
-                badge = '<span class="badge-upcoming">Upcoming</span>'
-
-            st.markdown(f"""
-            <div class="match-card" style="border-left:3px solid {accent}">
-                <div class="card-comp">{fmt_stage(m['stage'])}</div>
-                <div class="card-body">
-                    <div class="card-team-home {home_cls}">{m['home']}</div>
-                    <div class="card-score-block">{score_html}</div>
-                    <div class="card-team-away {away_cls}">{m['away']}</div>
-                </div>
-                <div class="card-footer">
-                    <span class="card-time">{fmt_date_local(m['date'])}</span>
-                    {badge}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-            if st.button("View match →", key=f"btn_{tab_key}_{m['id']}_{i}", use_container_width=True):
-                st.query_params["home_id"] = str(m['home_id'])
-                st.query_params["away_id"] = str(m['away_id'])
-                st.switch_page(PAGE_MATCH)
-
-def render_knockout_section(fixtures):
-    ko = [f for f in fixtures if f["stage"] in KNOCKOUT_STAGES]
-    if ko:
-        by_stage = {}
-        for f in ko:
-            by_stage.setdefault(fmt_stage(f["stage"]), []).append(f)
-        for s, ms in by_stage.items():
-            st.markdown(f'<div class="date-group">{s}</div>', unsafe_allow_html=True)
-            render_grid(ms, f"ko_{s}")
-    else:
-        render_grid([], "knockout")
-
-def home_page():
-    ballr_header()
-
     with st.spinner(""):
         try:
             fixtures = fetch_fixtures()
@@ -1045,6 +984,57 @@ def home_page():
 
     fixtures = [f for f in fixtures if f['home'] and f['away']]
     today    = datetime.now(ZoneInfo("America/Los_Angeles")).date()
+    knockout_stages = {'LAST_32','LAST_16','QUARTER_FINALS','SEMI_FINALS','THIRD_PLACE','FINAL'}
+
+    def render_grid(matches, tab_key):
+        if not matches:
+            st.markdown('<div class="empty-state"><div class="empty-icon">📅</div>No matches found.</div>', unsafe_allow_html=True)
+            return
+        cols = st.columns(3)
+        for i, m in enumerate(matches):
+            with cols[i % 3]:
+                finished = m['status'] == 'FINISHED'
+                live     = m['status'] in ('IN_PLAY','PAUSED')
+                tc       = get_team_color(m['home'], other_team=m['away'])
+                accent   = hex_to_rgba(tc, 0.35)
+
+                if finished:
+                    winner_side = match_winner(m)
+                    home_cls = 'card-winner' if winner_side == 'home' else 'card-loser' if winner_side == 'away' else ''
+                    away_cls = 'card-winner' if winner_side == 'away' else 'card-loser' if winner_side == 'home' else ''
+                    hs_disp, hp, aws_disp, ap = score_parts(m)
+                    hp_html = f'<span class="card-score-pens">({hp})</span>' if hp is not None else ''
+                    ap_html = f'<span class="card-score-pens">({ap})</span>' if ap is not None else ''
+                    score_html = f'<div class="card-score-nums">{hp_html}<span class="card-score-num">{hs_disp}</span><span class="card-score-sep">–</span><span class="card-score-num">{aws_disp}</span>{ap_html}</div>'
+                    badge = '<span class="badge-ft">PENS</span>' if m.get('went_to_penalties') else '<span class="badge-ft">FT</span>'
+                elif live:
+                    home_cls = away_cls = ''
+                    score_html = '<div class="card-vs" style="color:#4ade80">LIVE</div>'
+                    badge = '<span class="badge-live">● LIVE</span>'
+                else:
+                    home_cls = away_cls = ''
+                    score_html = '<div class="card-vs">VS</div>'
+                    badge = '<span class="badge-upcoming">Upcoming</span>'
+
+                st.markdown(f"""
+                <div class="match-card" style="border-left:3px solid {accent}">
+                    <div class="card-comp">{fmt_stage(m['stage'])}</div>
+                    <div class="card-body">
+                        <div class="card-team-home {home_cls}">{m['home']}</div>
+                        <div class="card-score-block">{score_html}</div>
+                        <div class="card-team-away {away_cls}">{m['away']}</div>
+                    </div>
+                    <div class="card-footer">
+                        <span class="card-time">{fmt_date_local(m['date'])}</span>
+                        {badge}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                if st.button("View match →", key=f"btn_{tab_key}_{m['id']}_{i}", use_container_width=True):
+                    st.session_state.selected_match = m
+                    st.session_state.page = 'match'
+                    st.rerun()
 
     tab_today, tab_all, tab_group, tab_knockout = st.tabs([
         "📅  Today", "🌍  All Matches", "⚽  Group Stage", "🏆  Knockout"
@@ -1079,24 +1069,18 @@ def home_page():
         render_grid([f for f in fixtures if f['stage'] == 'GROUP_STAGE'], "group")
 
     with tab_knockout:
-        st.page_link(PAGE_KNOCKOUT, label="Open the full Knockout page →", icon="🏆")
-        render_knockout_section(fixtures)
+        ko = [f for f in fixtures if f["stage"] in knockout_stages]
 
-def knockout_page():
-    ballr_header()
-    if st.button("← Back to fixtures"):
-        st.switch_page(PAGE_HOME)
+        if ko:
+            by_stage = {}
+            for f in ko:
+                by_stage.setdefault(fmt_stage(f["stage"]), []).append(f)
 
-    with st.spinner(""):
-        try:
-            fixtures = fetch_fixtures()
-        except:
-            st.error("Can't reach backend.")
-            return
-
-    fixtures = [f for f in fixtures if f['home'] and f['away']]
-    sec_header("Knockout Stage")
-    render_knockout_section(fixtures)
+            for s, ms in by_stage.items():
+                st.markdown(f'<div class="date-group">{s}</div>', unsafe_allow_html=True)
+                render_grid(ms, f"ko_{s}")
+        else:
+            render_grid([], "knockout")
 
 # ── FINISHED MATCH ─────────────────────────────────────────────────────────
 def show_finished_match(m, data):
@@ -1370,30 +1354,15 @@ def show_upcoming_match(m, data):
     """, unsafe_allow_html=True)
 
 # ── MATCH ROUTER ───────────────────────────────────────────────────────────
-def match_page():
+def show_match():
+    m = st.session_state.selected_match
+    if not m:
+        st.session_state.page = 'home'
+        st.rerun()
+
     if st.button("← Back to fixtures"):
-        st.switch_page(PAGE_HOME)
-
-    try:
-        home_id = int(st.query_params.get("home_id"))
-        away_id = int(st.query_params.get("away_id"))
-    except (TypeError, ValueError):
-        st.error("No match selected.")
-        return
-
-    with st.spinner(""):
-        try:
-            fixtures = fetch_fixtures()
-        except:
-            st.error("Can't reach backend.")
-            return
-
-    m = next((f for f in fixtures if f['home_id'] == home_id and f['away_id'] == away_id), None)
-    if not m:
-        m = next((f for f in fixtures if f['home_id'] == away_id and f['away_id'] == home_id), None)
-    if not m:
-        st.error("Match not found.")
-        return
+        st.session_state.page = 'home'
+        st.rerun()
 
     with st.spinner("Loading match data..."):
         try:
@@ -1408,13 +1377,7 @@ def match_page():
         show_upcoming_match(m, data)
 
 # ── ROUTER ─────────────────────────────────────────────────────────────────
-# Real multi-page routing with actual URL paths (e.g. /knockout), so the
-# browser's back/forward buttons work correctly instead of exiting the app —
-# each navigation is a genuine page change Streamlit registers in browser
-# history, rather than a same-page rerun faked with session_state.
-PAGE_HOME     = st.Page(home_page, title="Ballr", url_path="", default=True)
-PAGE_KNOCKOUT = st.Page(knockout_page, title="Knockout", url_path="knockout")
-PAGE_MATCH    = st.Page(match_page, title="Match", url_path="match")
-
-pg = st.navigation([PAGE_HOME, PAGE_KNOCKOUT, PAGE_MATCH], position="hidden")
-pg.run()
+if st.session_state.page == 'home':
+    show_home()
+elif st.session_state.page == 'match':
+    show_match()
