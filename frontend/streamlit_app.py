@@ -1387,9 +1387,19 @@ def show_match():
         st.session_state.page = 'home'
         st.rerun()
 
-    if st.button("← Back to fixtures"):
-        st.session_state.page = 'home'
-        st.rerun()
+    col_back, col_refresh = st.columns([4, 1])
+    with col_back:
+        if st.button("← Back to fixtures"):
+            st.session_state.page = 'home'
+            st.rerun()
+    with col_refresh:
+        # Manual cache-bust only — fetch_match_data is cached for 1 hour to
+        # protect the API rate limit, so this button never triggers an
+        # extra call on its own. It only refetches when a user explicitly
+        # clicks it, same as a normal cache expiry would, just on demand.
+        if st.button("🔄 Refresh data"):
+            fetch_match_data.clear()
+            st.rerun()
 
     with st.spinner("Loading match data..."):
         try:
