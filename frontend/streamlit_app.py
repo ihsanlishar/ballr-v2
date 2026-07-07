@@ -40,7 +40,7 @@ def _html_safe_markdown(body, *args, **kwargs):
 st.markdown = _html_safe_markdown
 
 st.set_page_config(
-    page_title="Ballr 2.0",
+    page_title="Ballr 2.1",
     page_icon="⚽",
     layout="wide"
 )
@@ -990,7 +990,7 @@ def show_home():
         <div style="padding-top:6px">
             <div class="ballr-header-row">
                 <span class="ballr-title">Ballr</span>
-                <span class="ballr-version">2.0</span>
+                <span class="ballr-version">2.1</span>
             </div>
             <div class="ballr-sub">2026 FIFA World Cup · Match Predictor</div>
         </div>""", unsafe_allow_html=True)
