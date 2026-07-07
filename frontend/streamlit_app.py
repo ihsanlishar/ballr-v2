@@ -1259,8 +1259,6 @@ def show_finished_match(m, data):
     <div class="insight-box">
         The model gave <strong>{home_name}</strong> a <strong>{p1}% win probability</strong>,
         <strong>{away_name}</strong> <strong>{p2}%</strong>{draw_clause}.
-        Elo ratings: <strong>{home_name} {sim.get('elo_home','-')}</strong> vs
-        <strong>{away_name} {sim.get('elo_away','-')}</strong>.
         Most likely score predicted: <strong>{top_pred}</strong>.
         Actual result: <strong>{actual_score}</strong>. &nbsp;
         <span style="color:{acc_color};font-weight:700">{acc_text}</span>
@@ -1309,11 +1307,6 @@ def show_upcoming_match(m, data):
     <div class="match-hero" style="border-top:3px solid {c1_color}">
         <div class="hero-meta">{fmt_stage(m['stage'])} · {fmt_date_local(m['date'])}</div>
         <div class="hero-teams">{home_name} <span class="hero-vs">vs</span> {away_name}</div>
-        <div style="margin-top:8px;color:#3d4f6b;font-size:0.82rem">
-            Elo: <span style="color:#94a3b8;font-weight:700">{home_name} {sim.get('elo_home','-')}</span>
-            &nbsp;·&nbsp;
-            <span style="color:#94a3b8;font-weight:700">{away_name} {sim.get('elo_away','-')}</span>
-        </div>
     </div>
     """, unsafe_allow_html=True)
 
