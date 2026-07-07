@@ -202,7 +202,13 @@ def match(home_id, away_id):
                 away_name = m['awayTeam']['name']
                 break
 
-    simulation = run_simulation(home_name, away_name, home_stats, away_stats)
+    # Group stage allows draws; every knockout round (Round of 32 through
+    # the Final, including the third-place playoff) always produces a
+    # winner via extra time / penalties, so those get win-vs-win-only
+    # probabilities instead of a win/draw/win split.
+    is_knockout = bool(match_info) and match_info.get('stage') != 'GROUP_STAGE'
+
+    simulation = run_simulation(home_name, away_name, home_stats, away_stats, is_knockout=is_knockout)
 
     events = None
     if current_status == 'FINISHED':

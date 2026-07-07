@@ -390,15 +390,26 @@ def plotly_base(fig, height=300):
     return fig
 
 # ── Chart: Donut ───────────────────────────────────────────────────────────
-def chart_donut(home_team, away_team, p1, pd_, p2):
+def chart_donut(home_team, away_team, p1, pd_, p2, is_knockout=False):
     c1 = get_team_color(home_team, other_team=away_team)
     c2 = get_team_color(away_team, other_team=home_team)
 
+    if is_knockout:
+        # No draw slice — a knockout match always has a winner, so this is
+        # a straight win-vs-win split rather than a three-way pie.
+        labels = [home_team, away_team]
+        values = [p1, p2]
+        colors = [c1, c2]
+    else:
+        labels = [home_team, 'Draw', away_team]
+        values = [p1, pd_, p2]
+        colors = [c1, '#131e30', c2]
+
     fig = go.Figure(go.Pie(
-        labels=[home_team, 'Draw', away_team],
-        values=[p1, pd_, p2],
+        labels=labels,
+        values=values,
         hole=0.62,
-        marker=dict(colors=[c1, '#131e30', c2], line=dict(color='#080d18', width=3)),
+        marker=dict(colors=colors, line=dict(color='#080d18', width=3)),
         textinfo='none',
         hovertemplate='<b>%{label}</b><br>%{value}%<extra></extra>',
         direction='clockwise',
@@ -420,14 +431,17 @@ def chart_donut(home_team, away_team, p1, pd_, p2):
     return fig
 
 # ── Donut + prob boxes ─────────────────────────────────────────────────────
-def render_donut_with_boxes(home_team, away_team, p1, pd_, p2):
+def render_donut_with_boxes(home_team, away_team, p1, pd_, p2, is_knockout=False):
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.plotly_chart(chart_donut(home_team, away_team, p1, pd_, p2),
+        st.plotly_chart(chart_donut(home_team, away_team, p1, pd_, p2, is_knockout=is_knockout),
                         use_container_width=True, config={'displayModeBar': False})
     with col2:
         highlight = 'home' if p1 > p2 else 'away'
-        items = [(home_team, p1, 'home'), ('Draw', pd_, None), (away_team, p2, 'away')]
+        if is_knockout:
+            items = [(home_team, p1, 'home'), (away_team, p2, 'away')]
+        else:
+            items = [(home_team, p1, 'home'), ('Draw', pd_, None), (away_team, p2, 'away')]
         boxes_html = ''
         for label, pct, side in items:
             is_hl     = side == highlight
@@ -452,14 +466,20 @@ def render_donut_with_boxes(home_team, away_team, p1, pd_, p2):
         """, unsafe_allow_html=True)
 
 # ── Confidence meter ────────────────────────────────────────────────────────
-def render_confidence_meter(home_team, away_team, p1, pd_, p2):
+def render_confidence_meter(home_team, away_team, p1, pd_, p2, is_knockout=False):
     """
     Confidence = gap between the model's top pick and the next most likely
     outcome. A narrow gap (e.g. 38% vs 34%) means the model sees this as
     close to a toss-up even if it has a nominal favorite; a wide gap means
     it's genuinely backing one outcome.
+
+    For knockout matches, Draw is excluded from the ranking entirely (it's
+    not a valid final outcome), so the gap is simply between the two teams.
     """
-    outcomes = [('home', home_team, p1), ('draw', 'Draw', pd_), ('away', away_team, p2)]
+    if is_knockout:
+        outcomes = [('home', home_team, p1), ('away', away_team, p2)]
+    else:
+        outcomes = [('home', home_team, p1), ('draw', 'Draw', pd_), ('away', away_team, p2)]
     ranked   = sorted(outcomes, key=lambda x: x[2], reverse=True)
     top_key, top_label, top_val = ranked[0]
     _, _, second_val            = ranked[1]
@@ -1217,22 +1237,28 @@ def show_finished_match(m, data):
 
     # ── Prediction retrospective ──
     sec_header("What the Model Predicted")
+    is_knockout = m['stage'] != 'GROUP_STAGE'
     p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
-    predicted_winner = (
-        home_name if p1 > p2 and p1 > pd_
-        else away_name if p2 > p1 and p2 > pd_
-        else "a draw"
-    )
+    if is_knockout:
+        predicted_winner = home_name if p1 > p2 else away_name
+    else:
+        predicted_winner = (
+            home_name if p1 > p2 and p1 > pd_
+            else away_name if p2 > p1 and p2 > pd_
+            else "a draw"
+        )
     was_correct   = (predicted_winner == winner) or (predicted_winner == "a draw" and winner is None)
     acc_color     = '#4ade80' if was_correct else '#f87171'
     acc_text      = '✅ Correct prediction' if was_correct else '❌ Incorrect prediction'
     top_pred      = sim['top_scores'][0][0] if sim['top_scores'] else '—'
     score_correct = top_pred == actual_score
 
+    draw_clause = '' if is_knockout else f', with a <strong>{pd_}% draw chance</strong>'
+
     st.markdown(f"""
     <div class="insight-box">
         The model gave <strong>{home_name}</strong> a <strong>{p1}% win probability</strong>,
-        <strong>{away_name}</strong> <strong>{p2}%</strong>, with a <strong>{pd_}% draw chance</strong>.
+        <strong>{away_name}</strong> <strong>{p2}%</strong>{draw_clause}.
         Elo ratings: <strong>{home_name} {sim.get('elo_home','-')}</strong> vs
         <strong>{away_name} {sim.get('elo_away','-')}</strong>.
         Most likely score predicted: <strong>{top_pred}</strong>.
@@ -1242,8 +1268,8 @@ def show_finished_match(m, data):
     </div>
     """, unsafe_allow_html=True)
 
-    render_donut_with_boxes(home_name, away_name, p1, pd_, p2)
-    render_confidence_meter(home_name, away_name, p1, pd_, p2)
+    render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
 
     sec_header("Score Probability Heatmap")
     st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
@@ -1275,6 +1301,7 @@ def show_upcoming_match(m, data):
 
     c1_color = get_team_color(home_name, other_team=away_name)
     c2_color = get_team_color(away_name, other_team=home_name)
+    is_knockout = m['stage'] != 'GROUP_STAGE'
     p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
     xg1, xg2   = sim['team1_xg'], sim['team2_xg']
 
@@ -1291,8 +1318,8 @@ def show_upcoming_match(m, data):
     """, unsafe_allow_html=True)
 
     sec_header("Win Probability · 50,000 Simulations")
-    render_donut_with_boxes(home_name, away_name, p1, pd_, p2)
-    render_confidence_meter(home_name, away_name, p1, pd_, p2)
+    render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
 
     sec_header("Expected Goals (xG)")
     col1, col2 = st.columns(2)

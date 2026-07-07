@@ -54,7 +54,7 @@ def dixon_coles_correction(home_goals, away_goals, lam1, lam2, rho=-0.13):
         return 1 - rho
     return 1.0
 
-def run_simulation(home_team, away_team, home_stats, away_stats, n=50000):
+def run_simulation(home_team, away_team, home_stats, away_stats, n=50000, is_knockout=False):
     """
     Full prediction model:
     1. Base attack rate from weighted goals per game
@@ -64,6 +64,14 @@ def run_simulation(home_team, away_team, home_stats, away_stats, n=50000):
     5. GD anchor — sustained dominance gets small boost
     6. Form momentum — recent run of results (replaces NLU)
     7. Dixon-Coles correction — fixes 1-1 over-prediction
+
+    is_knockout: when True, a drawn-after-90 result isn't a valid final
+    outcome (extra time / penalties resolve it), so the draw probability
+    mass is redistributed proportionally into each team's win% rather than
+    displayed as a standalone outcome. E.g. raw 40% / 20% draw / 40% becomes
+    a clean 50% / 50%. This does not model penalty-shootout skill — it's a
+    proportional split, chosen deliberately for simplicity over a shootout
+    model with more moving parts and negligible practical difference.
     """
 
     # ── 1. Base rates ──────────────────────────────────────────────────────
@@ -139,6 +147,25 @@ def run_simulation(home_team, away_team, home_stats, away_stats, n=50000):
 
     total = home_wins + draws + away_wins
 
+    team1_win_pct = home_wins / total * 100
+    draw_pct      = draws     / total * 100
+    team2_win_pct = away_wins / total * 100
+
+    if is_knockout:
+        # A draw isn't a valid final outcome in a knockout match — split the
+        # draw probability mass proportionally into each team's existing
+        # win/loss ratio rather than showing a standalone draw percentage.
+        decisive_total = home_wins + away_wins
+        if decisive_total > 0:
+            team1_win_pct = home_wins / decisive_total * 100
+            team2_win_pct = away_wins / decisive_total * 100
+        else:
+            # Degenerate edge case (near-impossible in practice): no
+            # decisive outcome at all in the raw simulation. Fall back to
+            # an even split rather than dividing by zero.
+            team1_win_pct = team2_win_pct = 50.0
+        draw_pct = 0.0
+
     # Top 5 most likely scores
     top_scores = sorted(score_dist.items(), key=lambda x: x[1], reverse=True)[:5]
 
@@ -148,9 +175,9 @@ def run_simulation(home_team, away_team, home_stats, away_stats, n=50000):
     elo_wp = elo_win_probability(elo_h, elo_a)
 
     return {
-        'team1_win_pct': round(home_wins / total * 100, 1),
-        'draw_pct':      round(draws     / total * 100, 1),
-        'team2_win_pct': round(away_wins / total * 100, 1),
+        'team1_win_pct': round(team1_win_pct, 1),
+        'draw_pct':      round(draw_pct, 1),
+        'team2_win_pct': round(team2_win_pct, 1),
         'team1_xg':      round(lam1, 2),
         'team2_xg':      round(lam2, 2),
         'team1_lambda':  round(lam1, 3),
@@ -162,4 +189,5 @@ def run_simulation(home_team, away_team, home_stats, away_stats, n=50000):
         'elo_win_prob':  round(elo_wp * 100, 1),
         'home_momentum': mom1,
         'away_momentum': mom2,
+        'is_knockout':   is_knockout,
     }

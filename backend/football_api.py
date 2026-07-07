@@ -5,6 +5,8 @@ import threading
 import requests
 from dotenv import load_dotenv
 
+from elo import get_elo, AVERAGE_ELO
+
 load_dotenv()
 
 API_KEY = os.getenv('FOOTBALL_DATA_API_KEY')
@@ -109,6 +111,40 @@ COMP_WEIGHTS = {
 }
 DEFAULT_COMP_WEIGHT = 0.65
 
+# ── Opponent-strength (goals quality) adjustment ─────────────────────────────
+# A goal's value as a signal of true attacking/defensive quality depends on
+# who it was scored against. Norway's 7 goals against Iraq shouldn't count
+# the same as 7 against France. We already have Elo ratings (elo.py, now
+# live-scraped), so we reuse them here to reweight each historical match's
+# goals-for and goals-against contribution by opponent strength, on top of
+# the existing competition/recency weighting.
+#
+# QUALITY_SCALE controls how strong the effect is: at the cap (an opponent
+# 400 Elo points — roughly a bottom-tier vs top-tier gap — above or below
+# average), goals-for weight moves by ±QUALITY_SCALE and goals-against
+# weight moves by the mirror amount in the opposite direction. Capped so a
+# single extreme mismatch (e.g. a friendly against a very weak side) can't
+# dominate a team's whole rolling average.
+QUALITY_SCALE = 0.35
+QUALITY_ELO_CAP = 400  # Elo points, symmetric around AVERAGE_ELO
+
+def _goal_quality_multipliers(opponent_name):
+    """
+    Returns (gf_multiplier, ga_multiplier) for a match against opponent_name.
+    - Strong opponent (Elo above average): gf weighted UP, ga weighted DOWN
+      (goals scored against a good team mean more; goals conceded to a good
+      team are less damning).
+    - Weak opponent: the reverse.
+    Neutral (average-strength opponent) => both multipliers are 1.0.
+    """
+    opp_elo = get_elo(opponent_name)
+    diff = max(-QUALITY_ELO_CAP, min(opp_elo - AVERAGE_ELO, QUALITY_ELO_CAP))
+    strength_factor = diff / QUALITY_ELO_CAP  # range: -1.0 to 1.0
+
+    gf_multiplier = 1 + strength_factor * QUALITY_SCALE
+    ga_multiplier = 1 - strength_factor * QUALITY_SCALE
+    return gf_multiplier, ga_multiplier
+
 @singleflight_ttl_cache(ttl=300)
 def get_fixtures():
     r = requests.get(f'{BASE_URL}/competitions/WC/matches', headers=HEADERS, timeout=15)
@@ -144,11 +180,12 @@ def parse_team_form(matches_data, team_id):
     if not finished:
         return _default_stats()
 
-    results        = []
-    weighted_gf    = []
-    weighted_ga    = []
-    clean_sheets   = 0
-    total_weight   = 0
+    results         = []
+    weighted_gf     = []
+    weighted_ga     = []
+    total_weight_gf = 0
+    total_weight_ga = 0
+    clean_sheets    = 0
 
     for i, m in enumerate(finished):
         home = m['homeTeam']['id'] == team_id
@@ -158,14 +195,22 @@ def parse_team_form(matches_data, team_id):
         if gf is None or ga is None:
             continue
 
+        opponent_name = m['awayTeam']['name'] if home else m['homeTeam']['name']
+
         comp_name = m.get('competition', {}).get('name', '')
         comp_w    = COMP_WEIGHTS.get(comp_name, DEFAULT_COMP_WEIGHT)
         recency_w = 0.85 ** i
-        weight    = comp_w * recency_w
-        total_weight += weight
+        base_weight = comp_w * recency_w
 
-        weighted_gf.append(gf * weight)
-        weighted_ga.append(ga * weight)
+        gf_quality_mult, ga_quality_mult = _goal_quality_multipliers(opponent_name)
+        gf_weight = base_weight * gf_quality_mult
+        ga_weight = base_weight * ga_quality_mult
+
+        total_weight_gf += gf_weight
+        total_weight_ga += ga_weight
+
+        weighted_gf.append(gf * gf_weight)
+        weighted_ga.append(ga * ga_weight)
 
         if ga == 0:
             clean_sheets += 1
@@ -174,12 +219,12 @@ def parse_team_form(matches_data, team_id):
         elif gf == ga: results.append('D')
         else:          results.append('L')
 
-    if not results or total_weight == 0:
+    if not results or total_weight_gf == 0 or total_weight_ga == 0:
         return _default_stats()
 
     n   = len(results)
-    wpg = sum(weighted_gf) / total_weight
-    cpg = sum(weighted_ga) / total_weight
+    wpg = sum(weighted_gf) / total_weight_gf
+    cpg = sum(weighted_ga) / total_weight_ga
 
     # WC-only form for display
     wc_matches = [m for m in finished
