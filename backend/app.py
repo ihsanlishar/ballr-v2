@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import datetime
 import threading
 from flask import Flask, jsonify
 from dotenv import load_dotenv
@@ -16,14 +17,35 @@ from monte_carlo import run_simulation
 
 app = Flask(__name__)
 
-# ── Permanent cache for finished matches ─────────────────────────────────────
+# ── Permanent cache for match predictions ────────────────────────────────────
 # A finished match's prediction inputs (team form, Elo, etc.) and the
 # resulting simulation will never change again, so there's no reason to ever
 # recompute them — every future viewer of that match, forever, should get
 # the exact same instant response with zero additional football-data.org
-# calls. This is the single biggest lever for handling concurrent traffic:
-# once any one person has viewed a finished match, it costs nothing for the
-# next 20 people to view it too. Disk-backed so it survives restarts.
+# calls.
+#
+# As of this version, we ALSO freeze predictions for matches that haven't
+# been played yet. Reason: get_team_stats() rolls forward as new matches
+# finish (each team's "last 20 finished matches" window shifts), which was
+# silently changing pre-match predictions on every page load even though
+# nothing about the actual matchup changed. Now a not-yet-played match is
+# predicted once and locked until it goes FINISHED, at which point it's
+# refreshed exactly once with final data and locked permanently.
+#
+# IMPORTANT — backward compatibility with your existing cache file:
+# Entries written by the previous version of this code have no 'status'
+# key. We treat the presence of 'events' (which the old code only ever set
+# for FINISHED matches) as proof that an old-format entry is already a
+# genuine finished-match result, so it is NOT recomputed/overwritten. This
+# means every prediction you've already generated and shown to users keeps
+# displaying exactly as it does today — this change only governs behavior
+# for matches predicted from now onward.
+#
+# This also does not change API call volume: get_fixtures() and
+# get_team_stats() were already TTL-cached (single-flight, 5 min) before
+# this change. All this layer avoids is redundant recomputation of
+# run_simulation(), which is pure CPU and never called the API to begin
+# with. Disk-backed so it survives restarts.
 MATCH_CACHE_FILE = os.path.join(os.path.dirname(__file__), 'finished_match_cache.json')
 _match_cache_lock = threading.Lock()
 
@@ -39,6 +61,23 @@ def _save_match_cache(cache_dict):
     with open(tmp_path, 'w') as f:
         json.dump(cache_dict, f)
     os.replace(tmp_path, MATCH_CACHE_FILE)
+
+def _is_already_frozen(cached_entry):
+    """
+    True if this cache entry should never be recomputed again.
+
+    - New-format entries: explicit status == 'FINISHED'.
+    - Old-format entries (no 'status' key at all, from before this change):
+      the old code only ever populated 'events' for FINISHED matches, so a
+      non-None 'events' value proves it's a genuine finished result. This
+      keeps every previously-generated prediction displaying exactly as it
+      already does — nothing pre-existing gets recomputed or overwritten.
+    """
+    if cached_entry.get('status') == 'FINISHED':
+        return True
+    if 'status' not in cached_entry and cached_entry.get('events') is not None:
+        return True
+    return False
 
 _finished_match_cache = _load_match_cache()
 
@@ -95,14 +134,9 @@ def fixtures():
 def match(home_id, away_id):
     cache_key = f"{home_id}-{away_id}"
 
-    with _match_cache_lock:
-        if cache_key in _finished_match_cache:
-            return jsonify(_finished_match_cache[cache_key])
-
-    # Figure out the match's status/names first using fixtures — this is
+    # Figure out the match's current status first using fixtures — this is
     # cheap (fixtures is already cached and shared across all users) and
-    # lets us decide whether this match even needs the more expensive
-    # per-team stats calls, without touching them yet.
+    # lets us decide whether a cached entry is safe to keep serving as-is.
     try:
         fixtures_list = get_fixtures()
     except Exception:
@@ -118,9 +152,21 @@ def match(home_id, away_id):
             if f['homeTeam']['id'] == away_id and f['awayTeam']['id'] == home_id
         ), None)
 
+    current_status = match_info.get('status') if match_info else None
+
+    with _match_cache_lock:
+        cached = _finished_match_cache.get(cache_key)
+        if cached is not None:
+            # Serve the frozen snapshot unless the match has just gone
+            # FINISHED and our cached copy was generated pre-match — that
+            # one transition needs exactly one refresh to fold in the real
+            # result and events. Already-frozen entries (old finished
+            # results included) are never recomputed.
+            if _is_already_frozen(cached) or current_status != 'FINISHED':
+                return jsonify(cached)
+
     home_name = match_info['homeTeam']['name'] if match_info else None
     away_name = match_info['awayTeam']['name'] if match_info else None
-    status    = match_info.get('status') if match_info else None
 
     try:
         home_data = get_team_stats(home_id)
@@ -159,22 +205,24 @@ def match(home_id, away_id):
     simulation = run_simulation(home_name, away_name, home_stats, away_stats)
 
     events = None
-    if status == 'FINISHED':
+    if current_status == 'FINISHED':
         events = get_match_events(home_name, away_name)
 
     result = {
-        'home_stats': home_stats,
-        'away_stats': away_stats,
-        'simulation': simulation,
-        'events':     events,
-        'home_name':  home_name,
-        'away_name':  away_name,
+        'home_stats':        home_stats,
+        'away_stats':        away_stats,
+        'simulation':        simulation,
+        'events':            events,
+        'home_name':         home_name,
+        'away_name':         away_name,
+        'status':            current_status,
+        'generated_at':      datetime.datetime.utcnow().isoformat() + 'Z',
+        'prediction_locked': current_status != 'FINISHED',
     }
 
-    if status == 'FINISHED':
-        with _match_cache_lock:
-            _finished_match_cache[cache_key] = result
-            _save_match_cache(_finished_match_cache)
+    with _match_cache_lock:
+        _finished_match_cache[cache_key] = result
+        _save_match_cache(_finished_match_cache)
 
     return jsonify(result)
 
