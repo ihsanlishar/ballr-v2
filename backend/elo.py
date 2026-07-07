@@ -65,31 +65,116 @@ ELO_RATINGS = {
 
 AVERAGE_ELO = 1600
 
-# ── Name reconciliation ──────────────────────────────────────────────────────
-# eloratings.net's display names don't always match the canonical keys used
-# throughout this app (ELO_RATINGS above, football_api.py, etc). Anything
-# scraped under a name NOT in this map (and not already an exact match to a
-# canonical key) is skipped rather than guessed at — a skipped team just
-# keeps its static fallback rating, which is safe. If you notice a team
-# stuck on an outdated rating, it's almost always a missing entry here.
-NAME_MAP = {
-    'IR Iran':              'Iran',
-    'USA':                  'United States',
-    'Korea Republic':       'South Korea',
-    'S. Korea':             'South Korea',
-    'Cote d\'Ivoire':       'Ivory Coast',
-    "Côte d'Ivoire":        'Ivory Coast',
-    'DR Congo':             'Congo DR',
-    'Congo DR':             'Congo DR',
-    'Cape Verde':           'Cape Verde Islands',
-    'Cabo Verde':           'Cape Verde Islands',
-    'Curacao':              'Curaçao',
-    'Bosnia & Herzegovina': 'Bosnia-Herzegovina',
-    'Bosnia and Herzegovina': 'Bosnia-Herzegovina',
-    'Czech Republic':       'Czechia',
-    'KSA':                  'Saudi Arabia',
-    'Saudi':                'Saudi Arabia',
+# ── Country code reconciliation ──────────────────────────────────────────────
+# Confirmed by live testing: eloratings.net's World.tsv identifies teams by a
+# 2-letter code (column index 2), NOT a full name — e.g. row 1 was
+# '1  1  ES  2177  ...' where 'ES' is Spain and 2177 is the rating. This maps
+# each code to this app's canonical team name. Almost all of these are
+# standard ISO 3166-1 alpha-2 codes; England and Scotland are NOT real ISO
+# countries (the UK is one ISO entry, 'GB'), so eloratings.net uses its own
+# codes for those — confirmed 'EN' = England from live data; 'SC' for
+# Scotland is a reasonable same-pattern guess but NOT yet independently
+# confirmed. Scoped to just this tournament's 48 teams rather than every
+# country in the world, since that's all this app needs.
+#
+# Any code that comes back from the scrape but ISN'T in this map is skipped
+# entirely (see _normalize_name) — that team simply keeps its static
+# fallback rating rather than risk being silently dropped or mismatched.
+CODE_TO_NAME = {
+    'FR': 'France',
+    'ES': 'Spain',
+    'EN': 'England',
+    'PT': 'Portugal',
+    'BR': 'Brazil',
+    'AR': 'Argentina',
+    'NL': 'Netherlands',
+    'DE': 'Germany',
+    'BE': 'Belgium',
+    'CO': 'Colombia',
+    'UY': 'Uruguay',
+    'MX': 'Mexico',
+    'US': 'United States',
+    'MA': 'Morocco',
+    'JP': 'Japan',
+    'SN': 'Senegal',
+    'HR': 'Croatia',
+    'CH': 'Switzerland',
+    'AU': 'Australia',
+    'NO': 'Norway',
+    'SE': 'Sweden',
+    'TR': 'Turkey',
+    'EC': 'Ecuador',
+    'KR': 'South Korea',
+    'CA': 'Canada',
+    'AT': 'Austria',
+    'CI': 'Ivory Coast',
+    'EG': 'Egypt',
+    'DZ': 'Algeria',
+    'GH': 'Ghana',
+    'IR': 'Iran',
+    'PY': 'Paraguay',
+    'RS': 'Serbia',
+    'ZA': 'South Africa',
+    'TN': 'Tunisia',
+    'PL': 'Poland',
+    'QA': 'Qatar',
+    'SA': 'Saudi Arabia',
+    'CZ': 'Czechia',
+    'PA': 'Panama',
+    'BA': 'Bosnia-Herzegovina',
+    'SC': 'Scotland',  # unconfirmed — same-pattern guess, verify against live output
+    'JO': 'Jordan',
+    'NZ': 'New Zealand',
+    'IQ': 'Iraq',
+    'HT': 'Haiti',
+    'CV': 'Cape Verde Islands',
+    'CW': 'Curaçao',
+    'UZ': 'Uzbekistan',
+    'CD': 'Congo DR',
 }
+
+
+def _normalize_name(raw_code):
+    """Map a scraped team code to this app's canonical name, or None if
+    there's no confident mapping (caller should skip it rather than guess)."""
+    return CODE_TO_NAME.get(raw_code.strip())
+
+
+def _parse_world_tsv(text):
+    """
+    Parse eloratings.net's World.tsv into {canonical_team_name: rating}.
+
+    Confirmed by live testing: tab-separated, no header row, 2-letter team
+    code in column index 2 (e.g. 'ES', 'AR', 'FR') and current rating in
+    column index 3 (0-indexed). Defensive by design — any row that doesn't
+    parse cleanly is skipped rather than allowed to throw or insert garbage.
+    """
+    ratings = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        cols = line.split('\t')
+        if len(cols) < 4:
+            continue
+
+        name = _normalize_name(cols[2])
+        if name is None:
+            continue  # unmapped code — leave this team on its static fallback
+
+        try:
+            rating = float(cols[3])
+        except ValueError:
+            continue
+
+        # Sanity bound — real Elo ratings for national teams sit well within
+        # this range. Anything outside it means we've misread the column
+        # layout (e.g. site changed format), so skip rather than trust it.
+        if not (500 <= rating <= 2600):
+            continue
+
+        ratings[name] = round(rating)
+
+    return ratings
 
 # ── Live ratings cache (disk-backed, 6-hour TTL) ─────────────────────────────
 # Timer-based rather than event-driven on purpose: it reuses the same
@@ -120,55 +205,6 @@ def _save_elo_cache_to_disk(cache_dict):
     with open(tmp_path, 'w') as f:
         json.dump(cache_dict, f)
     os.replace(tmp_path, ELO_CACHE_FILE)
-
-
-def _normalize_name(raw_name):
-    """Map a scraped team name to this app's canonical name, or None if
-    there's no confident mapping (caller should skip it rather than guess)."""
-    raw_name = raw_name.strip()
-    if raw_name in ELO_RATINGS:
-        return raw_name
-    if raw_name in NAME_MAP:
-        return NAME_MAP[raw_name]
-    return None
-
-
-def _parse_world_tsv(text):
-    """
-    Parse eloratings.net's World.tsv into {canonical_team_name: rating}.
-
-    Column layout is undocumented and reverse-engineered from public
-    reference implementations: tab-separated, no header row, team name in
-    column index 2 and current rating in column index 3 (0-indexed).
-    Defensive by design — any row that doesn't parse cleanly is skipped
-    rather than allowed to throw or insert garbage.
-    """
-    ratings = {}
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        cols = line.split('\t')
-        if len(cols) < 4:
-            continue
-
-        name = _normalize_name(cols[2])
-        if name is None:
-            continue  # unmapped name — leave this team on its static fallback
-
-        try:
-            rating = float(cols[3])
-        except ValueError:
-            continue
-
-        # Sanity bound — real Elo ratings for national teams sit well within
-        # this range. Anything outside it means we've misread the column
-        # layout (e.g. site changed format), so skip rather than trust it.
-        if not (500 <= rating <= 2600):
-            continue
-
-        ratings[name] = round(rating)
-
-    return ratings
 
 
 def _scrape_live_ratings():
@@ -265,3 +301,54 @@ def elo_strength_ratio(home_team, away_team):
     # Every 100 Elo points = ~5% adjustment, capped at ±20%
     ratio = 1.0 + (diff / 100) * 0.05
     return max(0.80, min(ratio, 1.20))
+
+
+if __name__ == '__main__':
+    # Standalone diagnostic — run with `python elo.py` (needs real internet
+    # access, so run this locally or via Railway's shell, not in a
+    # network-restricted sandbox). Prints exactly what the scraper sees at
+    # each stage, so a bad column-layout guess or a naming mismatch is
+    # immediately visible instead of silently falling back to static data.
+    print(f"Fetching: {ELO_SOURCE_URL}")
+    try:
+        resp = requests.get(ELO_SOURCE_URL, timeout=15)
+        print(f"HTTP status: {resp.status_code}")
+        print(f"Response length: {len(resp.text)} chars")
+
+        raw_lines = resp.text.splitlines()
+        print(f"\nFirst 5 raw lines (to sanity-check column layout):")
+        for line in raw_lines[:5]:
+            print(f"  {line!r}")
+
+        parsed = _parse_world_tsv(resp.text)
+        print(f"\nParsed {len(parsed)} teams successfully.")
+
+        if len(parsed) < 20:
+            print("WARNING: fewer than 20 teams parsed — this would trigger the "
+                  "sanity check and fall back to static ratings in production. "
+                  "The column layout (name=col index 2, rating=col index 3) is "
+                  "likely wrong for this file. Check the raw lines printed above.")
+        else:
+            print("Looks healthy — sample of parsed ratings:")
+            sample_teams = list(parsed.items())[:10]
+            for name, rating in sample_teams:
+                print(f"  {name}: {rating}")
+
+        print(f"\nSpecific lookups:")
+        for team in ['Switzerland', 'Colombia', 'Argentina', 'Egypt', 'France', 'Norway']:
+            in_scrape = parsed.get(team)
+            static    = ELO_RATINGS.get(team, AVERAGE_ELO)
+            print(f"  {team}: scraped={in_scrape!r}  static_fallback={static}")
+
+    except Exception as e:
+        print(f"\nSCRAPE FAILED: {type(e).__name__}: {e}")
+        print("This is exactly the failure mode that makes get_elo() silently "
+              "fall back to the static ELO_RATINGS dict in production — safe, "
+              "but means live updates aren't happening. Fix the underlying "
+              "issue (URL, network, or column layout) and re-run.")
+
+    print(f"\n--- Testing full get_elo() / get_live_elo_ratings() path ---")
+    live = get_live_elo_ratings()
+    print(f"get_live_elo_ratings() returned {len(live)} teams.")
+    print(f"get_elo('Switzerland') = {get_elo('Switzerland')}")
+    print(f"get_elo('Colombia')    = {get_elo('Colombia')}")

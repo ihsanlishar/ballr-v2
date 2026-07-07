@@ -62,6 +62,16 @@ def _save_match_cache(cache_dict):
         json.dump(cache_dict, f)
     os.replace(tmp_path, MATCH_CACHE_FILE)
 
+# Bumped whenever the prediction pipeline changes in a way that should
+# invalidate previously-cached UPCOMING-match predictions (new Elo source,
+# new weighting logic, new output fields, etc). This does NOT affect
+# already-finished matches — those stay frozen forever regardless of
+# version, per the integrity guarantee. It only controls whether an
+# old, not-yet-played prediction gets recomputed with the current code
+# instead of being served forever unchanged. Bump this any time you ship
+# a change that should apply to matches already sitting in the cache.
+CACHE_SCHEMA_VERSION = 2
+
 def _is_already_frozen(cached_entry):
     """
     True if this cache entry should never be recomputed again.
@@ -70,8 +80,15 @@ def _is_already_frozen(cached_entry):
     - Old-format entries (no 'status' key at all, from before this change):
       the old code only ever populated 'events' for FINISHED matches, so a
       non-None 'events' value proves it's a genuine finished result. This
-      keeps every previously-generated prediction displaying exactly as it
-      already does — nothing pre-existing gets recomputed or overwritten.
+      keeps every previously-generated FINISHED prediction displaying
+      exactly as it already does — nothing pre-existing gets recomputed or
+      overwritten once a match is actually over.
+
+    Deliberately NOT considered frozen: an upcoming-match entry generated
+    under an older CACHE_SCHEMA_VERSION. Those get one fresh recompute with
+    current code (see the route below) — this is what lets the goals-quality
+    adjustment, live Elo, and knockout renormalization actually reach a
+    match that happened to be cached before those changes shipped.
     """
     if cached_entry.get('status') == 'FINISHED':
         return True
@@ -157,12 +174,15 @@ def match(home_id, away_id):
     with _match_cache_lock:
         cached = _finished_match_cache.get(cache_key)
         if cached is not None:
-            # Serve the frozen snapshot unless the match has just gone
-            # FINISHED and our cached copy was generated pre-match — that
-            # one transition needs exactly one refresh to fold in the real
-            # result and events. Already-frozen entries (old finished
-            # results included) are never recomputed.
-            if _is_already_frozen(cached) or current_status != 'FINISHED':
+            up_to_date = cached.get('schema_version') == CACHE_SCHEMA_VERSION
+            # Serve the frozen snapshot when either:
+            #  - it's a genuine finished result (never touched again), or
+            #  - it's an upcoming-match prediction already generated under
+            #    the CURRENT schema (no reason to recompute identical work).
+            # A pre-existing upcoming-match entry from an OLDER schema
+            # version falls through and gets recomputed once below, so it
+            # picks up whatever changed (Elo source, weighting, etc).
+            if _is_already_frozen(cached) or (current_status != 'FINISHED' and up_to_date):
                 return jsonify(cached)
 
     home_name = match_info['homeTeam']['name'] if match_info else None
@@ -224,6 +244,7 @@ def match(home_id, away_id):
         'status':            current_status,
         'generated_at':      datetime.datetime.utcnow().isoformat() + 'Z',
         'prediction_locked': current_status != 'FINISHED',
+        'schema_version':    CACHE_SCHEMA_VERSION,
     }
 
     with _match_cache_lock:
