@@ -500,9 +500,9 @@ def render_confidence_meter(home_team, away_team, p1, pd_, p2, is_knockout=False
             <span class="confidence-icon">{icon}</span>
             <div>
                 <div class="confidence-tier" style="color:{color}">{tier}</div>
-                <div class="confidence-note">Model favors <strong>{top_label}</strong> by {margin} pts over the next most likely outcome</div>
+                <div class="confidence-note">Model favors <strong>{top_label}</strong> by {margin}% over the next most likely outcome</div>
             </div>
-            <span class="confidence-badge" style="color:{color};border-color:{border}">{margin} pt gap</span>
+            <span class="confidence-badge" style="color:{color};border-color:{border}">{margin}% gap</span>
         </div>
         <div class="confidence-bar-bg">
             <div class="confidence-bar-fill" style="width:{bar_pct}%;background:{color}"></div>
@@ -534,7 +534,7 @@ def chart_stats_comparison(home_team, away_team, home_stats, away_stats):
         {'label':'Attack Efficiency','sublabel':'goals × win rate',
          'home': attack_eff(home_stats),
          'away': attack_eff(away_stats), 'suffix':''},
-        {'label':'Def. Solidity',    'sublabel':'lower conceded = higher',
+        {'label':'Def. Solidity',    'sublabel':'higher = stronger defense',
          'home': def_solidity(home_stats['conceded_per_game']),
          'away': def_solidity(away_stats['conceded_per_game']), 'suffix':''},
     ]
@@ -627,8 +627,8 @@ def chart_score_heatmap(home_team, away_team, score_dist, actual_score=None):
             pass
 
     fig.update_layout(
-        xaxis=dict(title=dict(text=home_team, font=dict(size=11, color='#94a3b8')), side='bottom'),
-        yaxis=dict(title=dict(text=away_team, font=dict(size=11, color='#94a3b8')), autorange='reversed'),
+        xaxis=dict(title=dict(text=f"{home_team} Goals", font=dict(size=11, color='#94a3b8')), side='bottom'),
+        yaxis=dict(title=dict(text=f"{away_team} Goals", font=dict(size=11, color='#94a3b8')), autorange='reversed'),
         height=420, paper_bgcolor='#0d1526', plot_bgcolor='#0d1526',
         font=dict(family='Inter, sans-serif', color='#94a3b8', size=11),
         margin=dict(l=48, r=16, t=32, b=48),
@@ -664,9 +664,9 @@ def render_momentum_cards(home_team, away_team, sim):
                     <div style="width:{fill_pct}%;background:{color};height:6px;border-radius:6px"></div>
                 </div>
                 <div class="momentum-score-row">
-                    <span class="momentum-score-label">Low</span>
+                    <span class="momentum-score-label">Poor form</span>
                     <span class="momentum-score-val" style="color:{color}">{label} · {mom:+.2f}</span>
-                    <span class="momentum-score-label">High</span>
+                    <span class="momentum-score-label">Great form</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1363,9 +1363,9 @@ def show_upcoming_match(m, data):
     stronger_pct = max(p1, p2)
     st.markdown(f"""
     <div class="insight-box">
-        <strong>{home_name}</strong> (Elo {sim.get('elo_home','-')}) vs
-        <strong>{away_name}</strong> (Elo {sim.get('elo_away','-')}).
-        Elo-based win probability: <strong>{sim.get('elo_win_prob','-')}%</strong> for {home_name}.
+        <strong>{home_name}</strong> (Elo rating {sim.get('elo_home','-')}) vs
+        <strong>{away_name}</strong> (Elo rating {sim.get('elo_away','-')}).
+        <span title="Elo rating: a strength score based on each team's results history — higher means a stronger track record.">Elo</span>-based win probability: <strong>{sim.get('elo_win_prob','-')}%</strong> for {home_name}.
         After applying form momentum, defensive strength, and attacking output,
         the full model gives <strong>{stronger}</strong> a <strong>{stronger_pct}%</strong> win probability
         across 50,000 simulations, with an expected <strong>{xg1} – {xg2}</strong> scoreline.
