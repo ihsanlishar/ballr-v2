@@ -98,6 +98,44 @@ def _is_already_frozen(cached_entry):
 
 _finished_match_cache = _load_match_cache()
 
+@app.route('/admin/clear-match-cache/<int:home_id>/<int:away_id>')
+def clear_match_cache(home_id, away_id):
+    """
+    Manual escape hatch: force-deletes a specific match's cached prediction
+    from disk, so the very next request for it recomputes from scratch with
+    whatever code is currently deployed — regardless of schema_version
+    logic, Streamlit's own cache, or anything else that might be stuck.
+
+    No auth on this route — fine for now since it's a personal debugging
+    tool during the tournament, but don't leave this exposed if you ever
+    make this project public-facing long-term.
+    """
+    cache_key = f"{home_id}-{away_id}"
+    reverse_key = f"{away_id}-{home_id}"
+    with _match_cache_lock:
+        removed = []
+        for key in (cache_key, reverse_key):
+            if key in _finished_match_cache:
+                del _finished_match_cache[key]
+                removed.append(key)
+        _save_match_cache(_finished_match_cache)
+    return jsonify({
+        'cleared_keys': removed,
+        'message': 'Cache entry deleted — next request for this match will recompute from scratch.'
+                   if removed else 'No cached entry found for this match (nothing to clear).'
+    })
+
+@app.route('/admin/clear-all-match-cache')
+def clear_all_match_cache():
+    """Nuclear option — clears every cached match prediction (not fixtures,
+    not Elo). Every upcoming match will recompute on next view. Use this if
+    you're not sure which specific match is stuck."""
+    with _match_cache_lock:
+        count = len(_finished_match_cache)
+        _finished_match_cache.clear()
+        _save_match_cache(_finished_match_cache)
+    return jsonify({'cleared_count': count, 'message': f'Cleared {count} cached match predictions.'})
+
 @app.route('/fixtures')
 def fixtures():
     try:
