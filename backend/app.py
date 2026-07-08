@@ -301,11 +301,21 @@ def match(home_id, away_id):
         'generated_at':      datetime.datetime.utcnow().isoformat() + 'Z',
         'prediction_locked': current_status != 'FINISHED',
         'schema_version':    CACHE_SCHEMA_VERSION,
+        'degraded':          match_info is None,
     }
 
-    with _match_cache_lock:
-        _finished_match_cache[cache_key] = result
-        _save_match_cache(_finished_match_cache)
+    # Only permanently freeze this result if we actually found the fixture
+    # in /fixtures. If match_info is None, this computation happened on a
+    # fallback path (fixtures fetch failed or the match wasn't found) —
+    # is_knockout, stage, and possibly team names are all unreliable in
+    # that case. Caching it anyway would lock in a wrong result forever
+    # (it would look "up to date" under the current schema version and
+    # never get a chance to self-correct). Skip the cache write so the
+    # very next request gets a fresh shot at finding the fixture properly.
+    if match_info is not None:
+        with _match_cache_lock:
+            _finished_match_cache[cache_key] = result
+            _save_match_cache(_finished_match_cache)
 
     return jsonify(result)
 
