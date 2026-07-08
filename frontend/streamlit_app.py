@@ -1146,6 +1146,40 @@ def show_finished_match(m, data):
     </div>
     """, unsafe_allow_html=True)
 
+    # ── Prediction retrospective ──
+    sec_header("What the Model Predicted")
+    is_knockout = m['stage'] != 'GROUP_STAGE'
+    p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
+    if is_knockout:
+        predicted_winner = home_name if p1 > p2 else away_name
+    else:
+        predicted_winner = (
+            home_name if p1 > p2 and p1 > pd_
+            else away_name if p2 > p1 and p2 > pd_
+            else "a draw"
+        )
+    was_correct   = (predicted_winner == winner) or (predicted_winner == "a draw" and winner is None)
+    acc_color     = '#4ade80' if was_correct else '#f87171'
+    acc_text      = '✅ Correct prediction' if was_correct else '❌ Incorrect prediction'
+    top_pred      = sim['top_scores'][0][0] if sim['top_scores'] else '—'
+    score_correct = top_pred == actual_score
+
+    draw_clause = '' if is_knockout else f', with a <strong>{pd_}% draw chance</strong>'
+
+    st.markdown(f"""
+    <div class="insight-box">
+        The model gave <strong>{home_name}</strong> a <strong>{p1}% win probability</strong>,
+        <strong>{away_name}</strong> <strong>{p2}%</strong>{draw_clause}.
+        Most likely score predicted: <strong>{top_pred}</strong>.
+        Actual result: <strong>{actual_score}</strong>. &nbsp;
+        <span style="color:{acc_color};font-weight:700">{acc_text}</span>
+        {'&nbsp;·&nbsp;<span style="color:#4ade80;font-weight:700">✅ Exact score predicted</span>' if score_correct else ''}
+    </div>
+    """, unsafe_allow_html=True)
+
+    render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+
     # ── Goal scorers ──
     home_ev    = events.get(home_name, {})
     away_ev    = events.get(away_name, {})
@@ -1221,6 +1255,9 @@ def show_finished_match(m, data):
                 if first:
                     st.markdown(stat_box(f"{first[0]['minute']}'", f"First Goal · {first[0]['player']}"), unsafe_allow_html=True)
 
+    # ── Key factors ──
+    render_key_factors(home_name, away_name, hs, aws, sim)
+
     # ── Form + stats ──
     sec_header("Form & Statistical Comparison")
     st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
@@ -1231,43 +1268,6 @@ def show_finished_match(m, data):
     sec_header("Form Momentum")
     st.markdown('<div style="background:#0d1526;border-left:2px solid #1e3a5f;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:16px;font-size:0.82rem;color:#4b5a75;line-height:1.7">Form momentum measures how confidently each team was playing going into this match — scored directly from recent results weighted by recency. A positive score boosts their predicted attacking output in the simulation.</div>', unsafe_allow_html=True)
     render_momentum_cards(home_name, away_name, sim)
-
-    # ── Key factors ──
-    render_key_factors(home_name, away_name, hs, aws, sim)
-
-    # ── Prediction retrospective ──
-    sec_header("What the Model Predicted")
-    is_knockout = m['stage'] != 'GROUP_STAGE'
-    p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
-    if is_knockout:
-        predicted_winner = home_name if p1 > p2 else away_name
-    else:
-        predicted_winner = (
-            home_name if p1 > p2 and p1 > pd_
-            else away_name if p2 > p1 and p2 > pd_
-            else "a draw"
-        )
-    was_correct   = (predicted_winner == winner) or (predicted_winner == "a draw" and winner is None)
-    acc_color     = '#4ade80' if was_correct else '#f87171'
-    acc_text      = '✅ Correct prediction' if was_correct else '❌ Incorrect prediction'
-    top_pred      = sim['top_scores'][0][0] if sim['top_scores'] else '—'
-    score_correct = top_pred == actual_score
-
-    draw_clause = '' if is_knockout else f', with a <strong>{pd_}% draw chance</strong>'
-
-    st.markdown(f"""
-    <div class="insight-box">
-        The model gave <strong>{home_name}</strong> a <strong>{p1}% win probability</strong>,
-        <strong>{away_name}</strong> <strong>{p2}%</strong>{draw_clause}.
-        Most likely score predicted: <strong>{top_pred}</strong>.
-        Actual result: <strong>{actual_score}</strong>. &nbsp;
-        <span style="color:{acc_color};font-weight:700">{acc_text}</span>
-        {'&nbsp;·&nbsp;<span style="color:#4ade80;font-weight:700">✅ Exact score predicted</span>' if score_correct else ''}
-    </div>
-    """, unsafe_allow_html=True)
-
-    render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
-    render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
 
     sec_header("Score Probability Heatmap")
     st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
@@ -1310,9 +1310,26 @@ def show_upcoming_match(m, data):
     </div>
     """, unsafe_allow_html=True)
 
+    sec_header("AI Insight")
+    stronger     = home_name if p1 > p2 else away_name
+    stronger_pct = max(p1, p2)
+    st.markdown(f"""
+    <div class="insight-box">
+        <strong>{home_name}</strong> (Elo rating {sim.get('elo_home','-')}) vs
+        <strong>{away_name}</strong> (Elo rating {sim.get('elo_away','-')}).
+        <span title="Elo rating: a strength score based on each team's results history — higher means a stronger track record.">Elo</span>-based win probability: <strong>{sim.get('elo_win_prob','-')}%</strong> for {home_name}.
+        After applying form momentum, defensive strength, and attacking output,
+        the full model gives <strong>{stronger}</strong> a <strong>{stronger_pct}%</strong> win probability
+        across 50,000 simulations, with an expected <strong>{xg1} – {xg2}</strong> scoreline.
+        Most likely result: <strong>{sim['top_scores'][0][0]}</strong> ({sim['top_scores'][0][1]}% of simulations).
+    </div>
+    """, unsafe_allow_html=True)
+
     sec_header("Win Probability · 50,000 Simulations")
     render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
     render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+
+    render_key_factors(home_name, away_name, hs, aws, sim)
 
     sec_header("Expected Goals (xG)")
     col1, col2 = st.columns(2)
@@ -1328,6 +1345,15 @@ def show_upcoming_match(m, data):
         <span>{home_name}</span><span>{away_name}</span>
     </div>
     """, unsafe_allow_html=True)
+
+    sec_header("Form & Statistical Comparison")
+    st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
+                    use_container_width=True, config={'displayModeBar': False})
+    render_form_blocks(home_name, away_name, hs, aws)
+
+    sec_header("Form Momentum")
+    st.markdown('<div style="background:#0d1526;border-left:2px solid #1e3a5f;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:16px;font-size:0.82rem;color:#4b5a75;line-height:1.7">Form momentum scores each team\'s recent run of results weighted by recency — a positive score boosts their predicted attacking output in the simulation.</div>', unsafe_allow_html=True)
+    render_momentum_cards(home_name, away_name, sim)
 
     sec_header("Score Probability Heatmap")
     st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
@@ -1346,32 +1372,6 @@ def show_upcoming_match(m, data):
         </div>
         """, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
-
-    sec_header("Form & Statistical Comparison")
-    st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
-                    use_container_width=True, config={'displayModeBar': False})
-    render_form_blocks(home_name, away_name, hs, aws)
-
-    sec_header("Form Momentum")
-    st.markdown('<div style="background:#0d1526;border-left:2px solid #1e3a5f;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:16px;font-size:0.82rem;color:#4b5a75;line-height:1.7">Form momentum scores each team\'s recent run of results weighted by recency — a positive score boosts their predicted attacking output in the simulation.</div>', unsafe_allow_html=True)
-    render_momentum_cards(home_name, away_name, sim)
-
-    render_key_factors(home_name, away_name, hs, aws, sim)
-
-    sec_header("AI Insight")
-    stronger     = home_name if p1 > p2 else away_name
-    stronger_pct = max(p1, p2)
-    st.markdown(f"""
-    <div class="insight-box">
-        <strong>{home_name}</strong> (Elo rating {sim.get('elo_home','-')}) vs
-        <strong>{away_name}</strong> (Elo rating {sim.get('elo_away','-')}).
-        <span title="Elo rating: a strength score based on each team's results history — higher means a stronger track record.">Elo</span>-based win probability: <strong>{sim.get('elo_win_prob','-')}%</strong> for {home_name}.
-        After applying form momentum, defensive strength, and attacking output,
-        the full model gives <strong>{stronger}</strong> a <strong>{stronger_pct}%</strong> win probability
-        across 50,000 simulations, with an expected <strong>{xg1} – {xg2}</strong> scoreline.
-        Most likely result: <strong>{sim['top_scores'][0][0]}</strong> ({sim['top_scores'][0][1]}% of simulations).
-    </div>
-    """, unsafe_allow_html=True)
 
 # ── MATCH ROUTER ───────────────────────────────────────────────────────────
 def show_match():
