@@ -230,6 +230,23 @@ def match(home_id, away_id):
 
     simulation = run_simulation(home_name, away_name, home_stats, away_stats, is_knockout=is_knockout)
 
+    # Belt-and-braces guarantee: no matter what path produced this simulation,
+    # a knockout match's win percentages must sum to 100 with zero draw. This
+    # runs independently of whatever is_knockout value reached run_simulation,
+    # so a stale/mismatched upstream state can't leak a non-renormalized
+    # three-way split into a match that can't legally end in a draw.
+    if is_knockout and simulation:
+        p1 = simulation['team1_win_pct']
+        p2 = simulation['team2_win_pct']
+        decisive_total = p1 + p2
+        if decisive_total > 0:
+            simulation['team1_win_pct'] = round(p1 / decisive_total * 100, 1)
+            simulation['team2_win_pct'] = round(p2 / decisive_total * 100, 1)
+        else:
+            simulation['team1_win_pct'] = simulation['team2_win_pct'] = 50.0
+        simulation['draw_pct'] = 0.0
+        simulation['is_knockout'] = True
+
     events = None
     if current_status == 'FINISHED':
         events = get_match_events(home_name, away_name)
