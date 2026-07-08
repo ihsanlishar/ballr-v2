@@ -111,6 +111,29 @@ COMP_WEIGHTS = {
 }
 DEFAULT_COMP_WEIGHT = 0.65
 
+# ── Recent defensive form boost ──────────────────────────────────────────────
+# As competition gets more elite (knockout rounds), a team's most recent
+# defensive form is a better predictor of how they'll defend NOW than their
+# average across all their matches — teams sit deeper, take fewer risks, and
+# tighten up compared to earlier group-stage matches. The existing recency
+# weighting (0.85 ** i) already favors recent games generally; this adds an
+# EXTRA boost specifically to the defensive side (goals conceded, clean
+# sheets) for a team's most recent matches, on top of that existing decay.
+# Does not touch the attacking side (goals scored) — this is specifically
+# about defensive solidity trending recently, not general form.
+#
+# WINDOW SIZE — confirmed via backtest (see backtest_defense_boost.py) that
+# football-data.org's free tier only returns THIS tournament's matches per
+# team (group stage + whatever knockout rounds have happened), so most
+# national teams have only 4-5 total finished matches on record at this
+# point in the competition. A window of 5 (the original value) covered
+# literally 100% of every team's data, which made the boost a mathematical
+# no-op — scaling every weight in a weighted average by the same factor
+# doesn't change the result at all. Set below the typical sample size so a
+# genuine "most recent N" vs. "the rest" split actually exists.
+RECENT_DEFENSE_WINDOW = 3   # how many of the most recent matches get the boost
+RECENT_DEFENSE_BOOST  = 0.5 # +50% extra weight on defensive metrics within that window
+
 # ── Opponent-strength (goals quality) adjustment ─────────────────────────────
 # A goal's value as a signal of true attacking/defensive quality depends on
 # who it was scored against. Norway's 7 goals against Iraq shouldn't count
@@ -172,7 +195,14 @@ def get_top_scorers():
     r.raise_for_status()
     return r.json()
 
-def parse_team_form(matches_data, team_id):
+def parse_team_form(matches_data, team_id, apply_recent_defense_boost=True):
+    """
+    apply_recent_defense_boost: when True (default), a team's most recent
+    RECENT_DEFENSE_WINDOW matches get extra weight specifically on the
+    defensive metrics (conceded_per_game, clean_sheet_rate). Exposed as a
+    toggle so old vs. new behavior can be A/B compared directly (see
+    backtest_defense_boost.py) rather than just trusted on faith.
+    """
     matches  = matches_data.get('matches', [])
     finished = [m for m in matches if m['status'] == 'FINISHED']
     finished = sorted(finished, key=lambda m: m['utcDate'], reverse=True)
@@ -180,12 +210,12 @@ def parse_team_form(matches_data, team_id):
     if not finished:
         return _default_stats()
 
-    results         = []
-    weighted_gf     = []
-    weighted_ga     = []
-    total_weight_gf = 0
-    total_weight_ga = 0
-    clean_sheets    = 0
+    results              = []
+    weighted_gf          = []
+    weighted_ga          = []
+    total_weight_gf      = 0
+    total_weight_ga      = 0
+    weighted_clean_sheets = 0.0
 
     for i, m in enumerate(finished):
         home = m['homeTeam']['id'] == team_id
@@ -206,6 +236,9 @@ def parse_team_form(matches_data, team_id):
         gf_weight = base_weight * gf_quality_mult
         ga_weight = base_weight * ga_quality_mult
 
+        if apply_recent_defense_boost and i < RECENT_DEFENSE_WINDOW:
+            ga_weight *= (1 + RECENT_DEFENSE_BOOST)
+
         total_weight_gf += gf_weight
         total_weight_ga += ga_weight
 
@@ -213,7 +246,7 @@ def parse_team_form(matches_data, team_id):
         weighted_ga.append(ga * ga_weight)
 
         if ga == 0:
-            clean_sheets += 1
+            weighted_clean_sheets += ga_weight
 
         if gf > ga:   results.append('W')
         elif gf == ga: results.append('D')
@@ -225,6 +258,11 @@ def parse_team_form(matches_data, team_id):
     n   = len(results)
     wpg = sum(weighted_gf) / total_weight_gf
     cpg = sum(weighted_ga) / total_weight_ga
+    # Weighted clean sheet rate — uses the same (quality + recency +
+    # defense-boost) weights as conceded_per_game, rather than a flat
+    # count/n, so a recent clean sheet against a strong side counts more
+    # than an old one against a weak side.
+    clean_sheet_rate = weighted_clean_sheets / total_weight_ga
 
     # WC-only form for display
     wc_matches = [m for m in finished
@@ -252,7 +290,7 @@ def parse_team_form(matches_data, team_id):
         'win_rate':          round(wins / n, 3),
         'goals_per_game':    round(wpg, 3),
         'conceded_per_game': round(cpg, 3),
-        'clean_sheet_rate':  round(clean_sheets / n, 3),
+        'clean_sheet_rate':  round(clean_sheet_rate, 3),
         'gd_per_game':       round(wpg - cpg, 3),
         'form_string':       ''.join(results[:5]),
         'wc_form':           ''.join(wc_form) or ''.join(results[:5]),
