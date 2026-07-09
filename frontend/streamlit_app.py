@@ -1224,38 +1224,39 @@ def show_finished_match(m, data):
     render_key_factors(home_name, away_name, hs, aws, sim)
 
     # ── Prediction retrospective ──
-    sec_header("What the Model Predicted")
     is_knockout = m['stage'] != 'GROUP_STAGE'
+    sec_header("What the Model Predicted" + (" (in regulation time)" if is_knockout else ""))
     p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
-    if is_knockout:
-        predicted_winner = home_name if p1 > p2 else away_name
-    else:
-        predicted_winner = (
-            home_name if p1 > p2 and p1 > pd_
-            else away_name if p2 > p1 and p2 > pd_
-            else "a draw"
-        )
+    predicted_winner = (
+        home_name if p1 > p2 and p1 > pd_
+        else away_name if p2 > p1 and p2 > pd_
+        else "a draw"
+    )
     was_correct   = (predicted_winner == winner) or (predicted_winner == "a draw" and winner is None)
     acc_color     = '#4ade80' if was_correct else '#f87171'
     acc_text      = '✅ Correct prediction' if was_correct else '❌ Incorrect prediction'
     top_pred      = sim['top_scores'][0][0] if sim['top_scores'] else '—'
     score_correct = top_pred == actual_score
 
-    draw_clause = '' if is_knockout else f', with a <strong>{pd_}% draw chance</strong>'
+    knockout_note = (
+        ' <span style="color:#5b6d8c">(In a knockout match, a drawn scoreline after 90 minutes is resolved by extra time and penalties — the percentages above reflect regulation time only.)</span>'
+        if is_knockout else ''
+    )
 
     st.markdown(f"""
     <div class="insight-box">
         The model gave <strong>{home_name}</strong> a <strong>{p1}% win probability</strong>,
-        <strong>{away_name}</strong> <strong>{p2}%</strong>{draw_clause}.
+        <strong>{away_name}</strong> <strong>{p2}%</strong>, with a <strong>{pd_}% draw chance</strong>.
         Most likely score predicted: <strong>{top_pred}</strong>.
         Actual result: <strong>{actual_score}</strong>. &nbsp;
         <span style="color:{acc_color};font-weight:700">{acc_text}</span>
         {'&nbsp;·&nbsp;<span style="color:#4ade80;font-weight:700">✅ Exact score predicted</span>' if score_correct else ''}
+        {knockout_note}
     </div>
     """, unsafe_allow_html=True)
 
-    render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
-    render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    render_donut_with_boxes(home_name, away_name, p1, pd_, p2)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2)
 
     sec_header("Score Probability Heatmap")
     st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
@@ -1298,9 +1299,16 @@ def show_upcoming_match(m, data):
     </div>
     """, unsafe_allow_html=True)
 
-    sec_header("Win Probability · 50,000 Simulations")
-    render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
-    render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    sec_header("Win Probability · 50,000 Simulations" + (" (in regulation time)" if is_knockout else ""))
+    if is_knockout:
+        st.markdown(
+            '<div style="color:#5b6d8c;font-size:0.82rem;margin-bottom:12px">'
+            'This is a knockout match — a draw after 90 minutes goes to extra time and penalties. '
+            'The percentages below reflect regulation time only.</div>',
+            unsafe_allow_html=True
+        )
+    render_donut_with_boxes(home_name, away_name, p1, pd_, p2)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2)
 
     sec_header("Expected Goals (xG)")
     col1, col2 = st.columns(2)
