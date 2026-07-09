@@ -269,6 +269,20 @@ st.markdown("""
     /* ── Insight box ── */
     .insight-box { background:#0d1526;border-left:3px solid #4a9eff;border-radius:0 10px 10px 0;padding:16px 20px;margin:16px 0;font-size:0.85rem;color:#64748b;line-height:1.7; }
     .insight-box strong { color:#e2e8f0; }
+    .plain-card { background:#0d1526;border:1px solid #131e30;border-radius:12px;padding:16px 18px;margin:12px 0 18px 0;color:#94a3b8;font-size:0.86rem;line-height:1.65; }
+    .plain-card strong { color:#e2e8f0; }
+    .tech-term { color:#7dd3fc;border-bottom:1px dotted #1e3a5f;cursor:help; }
+    .verdict-card { background:linear-gradient(135deg,#0d1a2e 0%,#0d1526 62%,#080d18 100%);border:1px solid #1e3a5f;border-left:4px solid #4a9eff;border-radius:14px;padding:22px 24px;margin:6px 0 22px 0; }
+    .verdict-label { font-size:0.66rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#4a9eff;margin-bottom:8px; }
+    .verdict-line { font-size:1.72rem;font-weight:900;color:#ffffff;letter-spacing:0;line-height:1.18; }
+    .verdict-line strong { color:#7dd3fc; }
+    .verdict-sub { font-size:0.85rem;color:#64748b;margin-top:10px;line-height:1.55; }
+    .top-score-card { background:#0d1526;border:1px solid #1e3a5f;border-radius:12px;padding:18px 20px;margin:10px 0 14px 0;display:flex;align-items:center;justify-content:space-between;gap:16px; }
+    .top-score-label { font-size:0.7rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#3d4f6b;margin-bottom:5px; }
+    .top-score-main { font-size:1.35rem;font-weight:900;color:#ffffff;line-height:1.2; }
+    .top-score-pct { color:#4a9eff;font-size:1.15rem;font-weight:900;white-space:nowrap; }
+    .model-intro { background:#0d1526;border:1px solid #1e3a5f;border-radius:12px;padding:16px 18px;margin:8px 0 18px 0;color:#94a3b8;font-size:0.84rem;line-height:1.65; }
+    .model-intro-title { color:#e2e8f0;font-weight:800;margin-bottom:4px; }
 
     /* ── Empty state ── */
     .empty-state { text-align:center;padding:60px 20px;color:#3d4f6b; }
@@ -304,6 +318,8 @@ if 'page' not in st.session_state:
     st.session_state.page = 'home'
 if 'selected_match' not in st.session_state:
     st.session_state.selected_match = None
+if 'model_intro_dismissed' not in st.session_state:
+    st.session_state.model_intro_dismissed = False
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 def get_local_tz():
@@ -372,6 +388,92 @@ def stat_box(val, lbl, color='blue'):
 
 def sec_header(title):
     st.markdown(f'<div class="sec-header">{title}</div>', unsafe_allow_html=True)
+
+def favorite_from_probs(home_team, away_team, p1, pd_, p2, is_knockout=False):
+    if is_knockout:
+        return (home_team, p1) if p1 >= p2 else (away_team, p2)
+    outcomes = [(home_team, p1), ('Draw', pd_), (away_team, p2)]
+    return max(outcomes, key=lambda x: x[1])
+
+def top_scoreline(sim):
+    top_scores = sim.get('top_scores') or []
+    if not top_scores:
+        return '—', None
+    score, pct = top_scores[0]
+    return score, pct
+
+def render_model_intro():
+    if not st.session_state.model_intro_dismissed:
+        st.markdown("""
+        <div class="model-intro">
+            <div class="model-intro-title">How this works</div>
+            Ballr estimates the match thousands of times using each team's recent scoring, defending, and form.
+            The big percentage is the main takeaway: how often the model sees that outcome happening.
+            The exact-score grid and technical terms are optional detail for people who want to dig in.
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Got it", key="dismiss_model_intro"):
+            st.session_state.model_intro_dismissed = True
+            st.rerun()
+    else:
+        with st.expander("How this works"):
+            st.markdown(
+                "Ballr runs many simulated versions of the match using recent attacking output, defensive record, "
+                "and form. The headline win probability is the main number. Expected goals, form momentum, and the "
+                "score grid are supporting details."
+            )
+
+def render_verdict(home_team, away_team, p1, pd_, p2, sim, is_knockout=False, retrospective=False):
+    favorite, favorite_pct = favorite_from_probs(home_team, away_team, p1, pd_, p2, is_knockout)
+    scoreline, score_pct = top_scoreline(sim)
+    if favorite == 'Draw':
+        line = f"Model sees a draw as the most likely result, with {scoreline} the likeliest score."
+    else:
+        line = f"Model favors <strong>{favorite}</strong> to win {scoreline}."
+    sub = f"{favorite_pct}% is the headline probability."
+    if score_pct is not None:
+        sub += f" The most common exact score appeared in {score_pct}% of simulations."
+    if is_knockout:
+        sub += " For knockout matches, win probability is shown for regulation time before extra time or penalties."
+    label = "Model Verdict" if not retrospective else "Model Verdict Before Kickoff"
+    st.markdown(f"""
+    <div class="verdict-card">
+        <div class="verdict-label">{label}</div>
+        <div class="verdict-line">{line}</div>
+        <div class="verdict-sub">{sub}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_expected_goals_plain(home_team, away_team, xg1, xg2):
+    leader = home_team if xg1 > xg2 else away_team if xg2 > xg1 else None
+    if leader:
+        lead_text = f"<strong>{leader}</strong> is projected to create the better chances."
+    else:
+        lead_text = "The model expects both teams to create about the same amount of danger."
+    st.markdown(f"""
+    <div class="plain-card">
+        {lead_text}<br>
+        <strong>{home_team}</strong> attacking strength: <strong>{xg1}</strong>
+        <span class="tech-term" title="Expected goals: the number of goals a team would typically score from the chances the model expects them to create.">expected goals</span>.
+        <strong>{away_team}</strong>: <strong>{xg2}</strong>
+        <span class="tech-term" title="Expected goals, often shortened to xG.">expected goals</span>.
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_top_score_primary(home_team, away_team, sim, actual_score=None):
+    scoreline, score_pct = top_scoreline(sim)
+    detail = f"{score_pct}% of simulations" if score_pct is not None else "Top simulated score"
+    actual = f"<div class='verdict-sub'>Actual score: <strong>{actual_score}</strong></div>" if actual_score else ""
+    st.markdown(f"""
+    <div class="top-score-card">
+        <div>
+            <div class="top-score-label">Most Likely Score</div>
+            <div class="top-score-main">{home_team} {scoreline} {away_team}</div>
+            {actual}
+        </div>
+        <div class="top-score-pct">{detail}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def hero_badge(winner_side, side):
     if winner_side is None: return '<span class="hero-badge-d">DRAW</span>'
@@ -643,12 +745,12 @@ def render_momentum_cards(home_team, away_team, sim):
     mom2 = sim.get('away_momentum', 0)
 
     def momentum_desc(score):
-        if score > 0.6:   return "Excellent recent run — high confidence"
+        if score > 0.6:   return "Excellent recent run"
         if score > 0.3:   return "Good form heading into this match"
         if score > 0.0:   return "Decent form — slightly positive"
         if score > -0.3:  return "Mixed recent results"
         if score > -0.6:  return "Struggling for form going in"
-        return "Poor recent run — low confidence"
+        return "Poor recent run"
 
     col1, col2 = st.columns(2)
     for col, team, mom in [(col1, home_team, mom1), (col2, away_team, mom2)]:
@@ -665,7 +767,7 @@ def render_momentum_cards(home_team, away_team, sim):
                 </div>
                 <div class="momentum-score-row">
                     <span class="momentum-score-label">Low</span>
-                    <span class="momentum-score-val" style="color:{color}">{label} · {mom:+.2f}</span>
+                    <span class="momentum-score-val" style="color:{color}" title="Technical form momentum score: {mom:+.2f}">{label}</span>
                     <span class="momentum-score-label">High</span>
                 </div>
             </div>
@@ -694,7 +796,7 @@ def render_form_blocks(home_team, away_team, hs, aws):
 
 # ── Key factors ────────────────────────────────────────────────────────────
 def render_key_factors(home_team, away_team, home_stats, away_stats, sim):
-    sec_header("Why the Model Predicted This")
+    sec_header("Why the Model Likes This Pick")
     factors = []
 
     # Form momentum factor
@@ -704,32 +806,32 @@ def render_key_factors(home_team, away_team, home_stats, away_stats, sim):
     if abs(mom_diff) > 0.2:
         better = home_team if mom_diff > 0 else away_team
         badge_cls = 'kf-badge-pos' if mom_diff > 0 else 'kf-badge-neg'
-        factors.append({'icon':'📈','label':'Form Momentum',
-            'text': f'<strong>{better}</strong> came into this match on a measurably stronger run of recent results. Form momentum score gap: <strong>{abs(mom_diff):.2f}</strong> — this translated to a <strong>~{abs(mom_diff)*6:.1f}%</strong> adjustment in projected attacking output.',
+        factors.append({'icon':'📈','label':'Recent Form',
+            'text': f'<strong>{better}</strong> came into this match on a stronger recent run. That gave them a small boost in projected attacking danger. <span class="tech-term" title="Technical form momentum score gap: {abs(mom_diff):.2f}">Technical detail</span>',
             'badge': f'<span class="{badge_cls}">{better} better form</span>'})
 
     # Defensive strength
     h_cs, a_cs = home_stats['clean_sheet_rate'], away_stats['clean_sheet_rate']
     if abs(h_cs - a_cs) > 0.1:
         stronger_def = home_team if h_cs > a_cs else away_team
-        factors.append({'icon':'🛡️','label':'Defensive Strength',
-            'text': f'<strong>{stronger_def}</strong> kept clean sheets in <strong>{max(h_cs,a_cs)*100:.0f}%</strong> of recent games vs <strong>{min(h_cs,a_cs)*100:.0f}%</strong> for their opponent — directly suppressing the opposition\'s expected goals in the model.',
+        factors.append({'icon':'🛡️','label':'Defending',
+            'text': f'<strong>{stronger_def}</strong> has been harder to score against, with clean sheets in <strong>{max(h_cs,a_cs)*100:.0f}%</strong> of recent games vs <strong>{min(h_cs,a_cs)*100:.0f}%</strong> for their opponent.',
             'badge': f'<span class="kf-badge-pos">{stronger_def} tighter defense</span>'})
 
     # Attacking output
     h_gpg, a_gpg = home_stats['goals_per_game'], away_stats['goals_per_game']
     if abs(h_gpg - a_gpg) > 0.3:
         sharper = home_team if h_gpg > a_gpg else away_team
-        factors.append({'icon':'⚡','label':'Attacking Output',
-            'text': f'<strong>{sharper}</strong> averaged <strong>{max(h_gpg,a_gpg):.1f} goals/game</strong> in recent form vs <strong>{min(h_gpg,a_gpg):.1f}</strong> for their opponent — raising their base xG in the simulation.',
+        factors.append({'icon':'⚡','label':'Chance Creation',
+            'text': f'<strong>{sharper}</strong> has scored more often lately: <strong>{max(h_gpg,a_gpg):.1f} goals/game</strong> vs <strong>{min(h_gpg,a_gpg):.1f}</strong>. That raises their expected scoring chances. <span class="tech-term" title="Expected goals, often shortened to xG, estimates goals from chance quality.">xG detail</span>',
             'badge': f'<span class="kf-badge-pos">{sharper} more clinical</span>'})
 
     # GD per game
     h_gd, a_gd = home_stats['gd_per_game'], away_stats['gd_per_game']
     if abs(h_gd - a_gd) > 0.5:
         dominant = home_team if h_gd > a_gd else away_team
-        factors.append({'icon':'📊','label':'Goal Difference Per Game',
-            'text': f'<strong>{dominant}</strong> carried a GD of <strong>{max(h_gd,a_gd):+.2f} per game</strong> into this match. Sustained positive GD indicates a team that consistently dominates — the model applies a small compounding multiplier for this.',
+        factors.append({'icon':'📊','label':'Control of Games',
+            'text': f'<strong>{dominant}</strong> has been winning the scoring margin more consistently, with a goal difference of <strong>{max(h_gd,a_gd):+.2f} per game</strong>.',
             'badge': f'<span class="kf-badge-pos">{dominant} dominant</span>'})
 
     if not factors:
@@ -1134,6 +1236,10 @@ def show_finished_match(m, data):
     </div>
     """, unsafe_allow_html=True)
 
+    is_knockout = m['stage'] != 'GROUP_STAGE'
+    p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
+    render_verdict(home_name, away_name, p1, pd_, p2, sim, is_knockout=is_knockout, retrospective=True)
+
     # ── Goal scorers ──
     home_ev    = events.get(home_name, {})
     away_ev    = events.get(away_name, {})
@@ -1215,18 +1321,16 @@ def show_finished_match(m, data):
                     use_container_width=True, config={'displayModeBar': False})
     render_form_blocks(home_name, away_name, hs, aws)
 
-    # ── Form momentum ──
-    sec_header("Form Momentum")
-    st.markdown('<div style="background:#0d1526;border-left:2px solid #1e3a5f;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:16px;font-size:0.82rem;color:#4b5a75;line-height:1.7">Form momentum measures how confidently each team was playing going into this match — scored directly from recent results weighted by recency. A positive score boosts their predicted attacking output in the simulation.</div>', unsafe_allow_html=True)
+    # ── Recent form ──
+    sec_header("Recent Form")
+    st.markdown('<div class="plain-card">This summarizes whether each team was trending up or down before the match. The hidden technical score is weighted toward more recent results.</div>', unsafe_allow_html=True)
     render_momentum_cards(home_name, away_name, sim)
 
     # ── Key factors ──
     render_key_factors(home_name, away_name, hs, aws, sim)
 
     # ── Prediction retrospective ──
-    is_knockout = m['stage'] != 'GROUP_STAGE'
     sec_header("What the Model Predicted" + (" (in regulation time)" if is_knockout else ""))
-    p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
     predicted_winner = (
         home_name if p1 > p2 and p1 > pd_
         else away_name if p2 > p1 and p2 > pd_
@@ -1255,28 +1359,29 @@ def show_finished_match(m, data):
     </div>
     """, unsafe_allow_html=True)
 
-    render_donut_with_boxes(home_name, away_name, p1, pd_, p2)
-    render_confidence_meter(home_name, away_name, p1, pd_, p2)
+    render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    render_top_score_primary(home_name, away_name, sim, actual_score=actual_score)
 
-    sec_header("Score Probability Heatmap")
-    st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.plotly_chart(chart_score_heatmap(home_name, away_name,
-            sim.get('score_dist', {}), actual_score),
-            use_container_width=True, config={'displayModeBar': False})
-    with col2:
-        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div style="font-size:0.72rem;color:#3d4f6b;line-height:1.8">
-            Each cell shows the probability of that exact scoreline across 50,000 simulations.<br><br>
-            <span style="color:#e2e8f0;font-weight:700">Columns</span> = {home_name} goals<br>
-            <span style="color:#e2e8f0;font-weight:700">Rows</span> = {away_name} goals<br><br>
-            Brighter = more likely.<br><br>
-            {'<span style="color:#4ade80;font-weight:700">✓ Green border = actual result</span>' if actual_score else ''}
-        </div>
-        """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.expander("See all score possibilities"):
+        st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.plotly_chart(chart_score_heatmap(home_name, away_name,
+                sim.get('score_dist', {}), actual_score),
+                use_container_width=True, config={'displayModeBar': False})
+        with col2:
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style="font-size:0.72rem;color:#3d4f6b;line-height:1.8">
+                Each cell is one exact score.<br><br>
+                <span style="color:#e2e8f0;font-weight:700">Columns</span> = {home_name} goals<br>
+                <span style="color:#e2e8f0;font-weight:700">Rows</span> = {away_name} goals<br><br>
+                Brighter cells happened more often in the simulations.<br><br>
+                {'<span style="color:#4ade80;font-weight:700">Green border = actual result</span>' if actual_score else ''}
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ── UPCOMING MATCH ─────────────────────────────────────────────────────────
 def show_upcoming_match(m, data):
@@ -1292,6 +1397,9 @@ def show_upcoming_match(m, data):
     p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
     xg1, xg2   = sim['team1_xg'], sim['team2_xg']
 
+    render_model_intro()
+    render_verdict(home_name, away_name, p1, pd_, p2, sim, is_knockout=is_knockout)
+
     st.markdown(f"""
     <div class="match-hero" style="border-top:3px solid {c1_color}">
         <div class="hero-meta">{fmt_stage(m['stage'])} · {fmt_date_local(m['date'])}</div>
@@ -1299,7 +1407,7 @@ def show_upcoming_match(m, data):
     </div>
     """, unsafe_allow_html=True)
 
-    sec_header("Win Probability · 50,000 Simulations" + (" (in regulation time)" if is_knockout else ""))
+    sec_header("Main Number: Win Probability" + (" (regulation time)" if is_knockout else ""))
     if is_knockout:
         st.markdown(
             '<div style="color:#5b6d8c;font-size:0.82rem;margin-bottom:12px">'
@@ -1307,63 +1415,69 @@ def show_upcoming_match(m, data):
             'The percentages below reflect regulation time only.</div>',
             unsafe_allow_html=True
         )
-    render_donut_with_boxes(home_name, away_name, p1, pd_, p2)
-    render_confidence_meter(home_name, away_name, p1, pd_, p2)
+    render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
 
-    sec_header("Expected Goals (xG)")
-    col1, col2 = st.columns(2)
-    with col1: st.markdown(stat_box(xg1, f"{home_name} xG"), unsafe_allow_html=True)
-    with col2: st.markdown(stat_box(xg2, f"{away_name} xG"), unsafe_allow_html=True)
-    total_xg = xg1 + xg2 if (xg1 + xg2) > 0 else 1
-    st.markdown(f"""
-    <div style="display:flex;border-radius:6px;overflow:hidden;height:6px;margin:8px 0 4px 0">
-        <div style="width:{xg1/total_xg*100}%;background:{c1_color}"></div>
-        <div style="width:{xg2/total_xg*100}%;background:{c2_color}"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#3d4f6b;margin-bottom:8px">
-        <span>{home_name}</span><span>{away_name}</span>
-    </div>
-    """, unsafe_allow_html=True)
+    render_top_score_primary(home_name, away_name, sim)
 
-    sec_header("Score Probability Heatmap")
-    st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.plotly_chart(chart_score_heatmap(home_name, away_name, sim.get('score_dist', {})),
-                        use_container_width=True, config={'displayModeBar': False})
-    with col2:
-        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div style="font-size:0.72rem;color:#3d4f6b;line-height:1.8">
-            Each cell shows the probability of that exact scoreline across 50,000 simulations.<br><br>
-            <span style="color:#e2e8f0;font-weight:700">Columns</span> = {home_name} goals<br>
-            <span style="color:#e2e8f0;font-weight:700">Rows</span> = {away_name} goals<br><br>
-            Brighter = more likely.
-        </div>
-        """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    sec_header("Form & Statistical Comparison")
-    st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
-                    use_container_width=True, config={'displayModeBar': False})
-    render_form_blocks(home_name, away_name, hs, aws)
-
-    sec_header("Form Momentum")
-    st.markdown('<div style="background:#0d1526;border-left:2px solid #1e3a5f;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:16px;font-size:0.82rem;color:#4b5a75;line-height:1.7">Form momentum scores each team\'s recent run of results weighted by recency — a positive score boosts their predicted attacking output in the simulation.</div>', unsafe_allow_html=True)
-    render_momentum_cards(home_name, away_name, sim)
+    with st.expander("See all possible scores"):
+        st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.plotly_chart(chart_score_heatmap(home_name, away_name, sim.get('score_dist', {})),
+                            use_container_width=True, config={'displayModeBar': False})
+        with col2:
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style="font-size:0.72rem;color:#3d4f6b;line-height:1.8">
+                Each cell is one exact score.<br><br>
+                <span style="color:#e2e8f0;font-weight:700">Columns</span> = {home_name} goals<br>
+                <span style="color:#e2e8f0;font-weight:700">Rows</span> = {away_name} goals<br><br>
+                Brighter cells happened more often in the simulations.
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     render_key_factors(home_name, away_name, hs, aws, sim)
 
-    sec_header("AI Insight")
-    stronger     = home_name if p1 > p2 else away_name
-    stronger_pct = max(p1, p2)
+    with st.expander("Technical details"):
+        sec_header("Expected Goals")
+        render_expected_goals_plain(home_name, away_name, xg1, xg2)
+        col1, col2 = st.columns(2)
+        with col1: st.markdown(stat_box(xg1, f"{home_name} expected goals"), unsafe_allow_html=True)
+        with col2: st.markdown(stat_box(xg2, f"{away_name} expected goals"), unsafe_allow_html=True)
+        total_xg = xg1 + xg2 if (xg1 + xg2) > 0 else 1
+        st.markdown(f"""
+        <div style="display:flex;border-radius:6px;overflow:hidden;height:6px;margin:8px 0 4px 0">
+            <div style="width:{xg1/total_xg*100}%;background:{c1_color}"></div>
+            <div style="width:{xg2/total_xg*100}%;background:{c2_color}"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#3d4f6b;margin-bottom:8px">
+            <span>{home_name}</span><span>{away_name}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        sec_header("Form & Statistical Comparison")
+        st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
+                        use_container_width=True, config={'displayModeBar': False})
+        render_form_blocks(home_name, away_name, hs, aws)
+
+        sec_header("Recent Form")
+        st.markdown('<div class="plain-card">This summarizes whether each team has been trending up or down before the match. The hidden technical score is weighted toward more recent results.</div>', unsafe_allow_html=True)
+        render_momentum_cards(home_name, away_name, sim)
+
+    sec_header("Plain-English Summary")
+    favorite, favorite_pct = favorite_from_probs(home_name, away_name, p1, pd_, p2, is_knockout)
+    if favorite == 'Draw':
+        main_signal = f"the draw is the single most common outcome, at <strong>{favorite_pct}%</strong>"
+    else:
+        main_signal = f"<strong>{favorite}</strong> wins most often, at <strong>{favorite_pct}%</strong>"
     st.markdown(f"""
     <div class="insight-box">
         <strong>{home_name}</strong> vs <strong>{away_name}</strong>.
-        After applying form momentum, defensive strength, and attacking output,
-        the full model gives <strong>{stronger}</strong> a <strong>{stronger_pct}%</strong> win probability
-        across 50,000 simulations, with an expected <strong>{xg1} – {xg2}</strong> scoreline.
-        Most likely result: <strong>{sim['top_scores'][0][0]}</strong> ({sim['top_scores'][0][1]}% of simulations).
+        The model's main signal is that {main_signal}.
+        The most likely exact score is <strong>{sim['top_scores'][0][0]}</strong>.
+        The biggest reasons are recent scoring form, defensive record, and how each team has been trending lately.
     </div>
     """, unsafe_allow_html=True)
 
