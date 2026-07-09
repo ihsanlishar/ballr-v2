@@ -5,8 +5,14 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timezone, date
 import os
 import re
+import html
 from zoneinfo import ZoneInfo
 BACKEND = os.getenv("BACKEND_URL", "http://127.0.0.1:5002")
+
+# ── App version ──────────────────────────────────────────────────────────
+# Single source of truth — used in both the browser tab title and the
+# visible header badge. Change it here only; nothing else needs editing.
+APP_VERSION = "2.1"
 
 # ── Frontend caching ──────────────────────────────────────────────────────
 # Streamlit reruns the entire script on almost every interaction (button
@@ -40,7 +46,7 @@ def _html_safe_markdown(body, *args, **kwargs):
 st.markdown = _html_safe_markdown
 
 st.set_page_config(
-    page_title="Ballr 2.0",
+    page_title=f"Ballr {APP_VERSION}",
     page_icon="⚽",
     layout="wide"
 )
@@ -1135,11 +1141,11 @@ def show_home():
         if os.path.exists(logo_path):
             st.image(logo_path, width=72)
     with col_title:
-        st.markdown("""
+        st.markdown(f"""
         <div style="padding-top:6px">
             <div class="ballr-header-row">
                 <span class="ballr-title">Ballr</span>
-                <span class="ballr-version">2.0</span>
+                <span class="ballr-version">{APP_VERSION}</span>
             </div>
             <div class="ballr-sub">2026 FIFA World Cup · Match Predictor</div>
         </div>""", unsafe_allow_html=True)
@@ -1224,15 +1230,33 @@ def show_home():
                 render_grid([], "today")
 
     with tab_all:
-        by_date = {}
-        for f in fixtures:
-            d = get_match_local_date(f['date'])
-            if d: by_date.setdefault(d, []).append(f)
-        for d in sorted(by_date.keys()):
-            is_today  = d == today
-            label_cls = 'date-group-today' if is_today else ''
-            st.markdown(f'<div class="date-group {label_cls}">{"Today · " if is_today else ""}{d.strftime("%A %d %B")}</div>', unsafe_allow_html=True)
-            render_grid(by_date[d], f"all_{d}")
+        search_query = st.text_input(
+            "🔍 Search by team",
+            key="all_matches_search",
+            placeholder="e.g. France, Morocco...",
+            label_visibility="collapsed",
+        )
+        filtered = fixtures
+        if search_query.strip():
+            q = search_query.strip().lower()
+            filtered = [f for f in fixtures if q in f['home'].lower() or q in f['away'].lower()]
+
+        if search_query.strip() and not filtered:
+            safe_query = html.escape(search_query.strip())
+            st.markdown(
+                f'<div class="empty-state"><div class="empty-icon">🔍</div>No matches found for "{safe_query}".</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            by_date = {}
+            for f in filtered:
+                d = get_match_local_date(f['date'])
+                if d: by_date.setdefault(d, []).append(f)
+            for d in sorted(by_date.keys()):
+                is_today  = d == today
+                label_cls = 'date-group-today' if is_today else ''
+                st.markdown(f'<div class="date-group {label_cls}">{"Today · " if is_today else ""}{d.strftime("%A %d %B")}</div>', unsafe_allow_html=True)
+                render_grid(by_date[d], f"all_{d}")
 
     with tab_group:
         render_grid([f for f in fixtures if f['stage'] == 'GROUP_STAGE'], "group")
