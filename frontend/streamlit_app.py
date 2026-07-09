@@ -269,20 +269,50 @@ st.markdown("""
     /* ── Insight box ── */
     .insight-box { background:#0d1526;border-left:3px solid #4a9eff;border-radius:0 10px 10px 0;padding:16px 20px;margin:16px 0;font-size:0.85rem;color:#64748b;line-height:1.7; }
     .insight-box strong { color:#e2e8f0; }
-    .plain-card { background:#0d1526;border:1px solid #131e30;border-radius:12px;padding:16px 18px;margin:12px 0 18px 0;color:#94a3b8;font-size:0.86rem;line-height:1.65; }
+    .plain-card { background:#0d1526;border:1px solid #131e30;border-radius:8px;padding:16px 18px;margin:12px 0 18px 0;color:#94a3b8;font-size:0.86rem;line-height:1.65; }
     .plain-card strong { color:#e2e8f0; }
     .tech-term { color:#7dd3fc;border-bottom:1px dotted #1e3a5f;cursor:help; }
-    .verdict-card { background:linear-gradient(135deg,#0d1a2e 0%,#0d1526 62%,#080d18 100%);border:1px solid #1e3a5f;border-left:4px solid #4a9eff;border-radius:14px;padding:22px 24px;margin:6px 0 22px 0; }
+    .verdict-card { background:linear-gradient(135deg,#0d1a2e 0%,#0d1526 62%,#080d18 100%);border:1px solid #1e3a5f;border-left:4px solid #4a9eff;border-radius:8px;padding:22px 24px;margin:6px 0 22px 0; }
     .verdict-label { font-size:0.66rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#4a9eff;margin-bottom:8px; }
     .verdict-line { font-size:1.72rem;font-weight:900;color:#ffffff;letter-spacing:0;line-height:1.18; }
     .verdict-line strong { color:#7dd3fc; }
     .verdict-sub { font-size:0.85rem;color:#64748b;margin-top:10px;line-height:1.55; }
-    .top-score-card { background:#0d1526;border:1px solid #1e3a5f;border-radius:12px;padding:18px 20px;margin:10px 0 14px 0;display:flex;align-items:center;justify-content:space-between;gap:16px; }
+    .top-score-card { background:#0d1526;border:1px solid #1e3a5f;border-radius:8px;padding:18px 20px;margin:10px 0 14px 0;display:flex;align-items:center;justify-content:space-between;gap:16px; }
     .top-score-label { font-size:0.7rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#3d4f6b;margin-bottom:5px; }
     .top-score-main { font-size:1.35rem;font-weight:900;color:#ffffff;line-height:1.2; }
     .top-score-pct { color:#4a9eff;font-size:1.15rem;font-weight:900;white-space:nowrap; }
-    .model-intro { background:#0d1526;border:1px solid #1e3a5f;border-radius:12px;padding:16px 18px;margin:8px 0 18px 0;color:#94a3b8;font-size:0.84rem;line-height:1.65; }
+    .model-intro { background:#0d1526;border:1px solid #1e3a5f;border-radius:8px;padding:16px 18px;margin:8px 0 18px 0;color:#94a3b8;font-size:0.84rem;line-height:1.65; }
     .model-intro-title { color:#e2e8f0;font-weight:800;margin-bottom:4px; }
+    .prediction-panel { background:#0b1220;border:1px solid #1d2a3d;border-radius:8px;margin:6px 0 24px 0;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,0.28); }
+    .prediction-topline { display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid #152033;background:#0a101d;color:#64748b;font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:1.4px; }
+    .prediction-grid { display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,0.7fr);gap:0; }
+    .prediction-main { padding:30px 32px 32px 32px;border-right:1px solid #152033; }
+    .prediction-side { padding:24px;background:#0d1526;display:flex;flex-direction:column;justify-content:space-between;gap:18px; }
+    .prediction-teams { display:flex;align-items:center;gap:16px;color:#f8fafc;font-size:1.55rem;font-weight:900;line-height:1.2;margin-bottom:18px; }
+    .team-dot { width:10px;height:10px;border-radius:50%;display:inline-block;box-shadow:0 0 0 4px rgba(255,255,255,0.04); }
+    .prediction-vs { color:#334155;font-size:0.95rem;font-weight:700; }
+    .prediction-kicker { color:#4a9eff;font-size:0.72rem;font-weight:900;letter-spacing:1.7px;text-transform:uppercase;margin-bottom:10px; }
+    .prediction-verdict { color:#ffffff;font-size:2.15rem;font-weight:900;letter-spacing:0;line-height:1.08;max-width:780px; }
+    .prediction-verdict strong { color:#7dd3fc; }
+    .prediction-copy { color:#7f8da5;font-size:0.92rem;line-height:1.65;margin-top:14px;max-width:760px; }
+    .prediction-metric { border:1px solid #1d2a3d;background:#0b1220;border-radius:8px;padding:18px; }
+    .prediction-metric-label { color:#64748b;font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px; }
+    .prediction-metric-value { color:#ffffff;font-size:2.35rem;font-weight:950;line-height:1; }
+    .prediction-metric-note { color:#64748b;font-size:0.78rem;line-height:1.5;margin-top:8px; }
+    .prob-stack { display:flex;flex-direction:column;gap:8px;height:300px;padding:4px 0; }
+    .prob-box { background:#0d1526;border:1px solid #172338;border-radius:8px;padding:16px;text-align:left;flex:1;display:flex;align-items:center;justify-content:space-between;gap:14px; }
+    .prob-box-highlight { border-color:#2d5b84;background:#0b1729; }
+    .prob-label { font-size:0.67rem;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:#64748b;margin-bottom:4px; }
+    .prob-sub { font-size:0.75rem;color:#4b5a75;line-height:1.35; }
+    .prob-value { font-size:2.1rem;font-weight:950;line-height:1;white-space:nowrap; }
+    @media (max-width: 900px) {
+        .prediction-grid { grid-template-columns:1fr; }
+        .prediction-main { border-right:none;border-bottom:1px solid #152033;padding:24px; }
+        .prediction-side { padding:20px; }
+        .prediction-teams { font-size:1.18rem;flex-wrap:wrap; }
+        .prediction-verdict { font-size:1.55rem; }
+        .top-score-card { flex-direction:column;align-items:flex-start; }
+    }
 
     /* ── Empty state ── */
     .empty-state { text-align:center;padding:60px 20px;color:#3d4f6b; }
@@ -390,8 +420,6 @@ def sec_header(title):
     st.markdown(f'<div class="sec-header">{title}</div>', unsafe_allow_html=True)
 
 def favorite_from_probs(home_team, away_team, p1, pd_, p2, is_knockout=False):
-    if is_knockout:
-        return (home_team, p1) if p1 >= p2 else (away_team, p2)
     outcomes = [(home_team, p1), ('Draw', pd_), (away_team, p2)]
     return max(outcomes, key=lambda x: x[1])
 
@@ -441,6 +469,55 @@ def render_verdict(home_team, away_team, p1, pd_, p2, sim, is_knockout=False, re
         <div class="verdict-label">{label}</div>
         <div class="verdict-line">{line}</div>
         <div class="verdict-sub">{sub}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_prediction_panel(home_team, away_team, stage_label, match_date, p1, pd_, p2, sim, home_color, away_color, is_knockout=False):
+    favorite, favorite_pct = favorite_from_probs(home_team, away_team, p1, pd_, p2, is_knockout)
+    scoreline, score_pct = top_scoreline(sim)
+    if favorite == 'Draw':
+        line = f"Model sees a draw during regulation, with {scoreline} the most likely score."
+        winner_note = "Draw is the single most common 90-minute outcome."
+    else:
+        line = f"Model favors <strong>{favorite}</strong> to win {scoreline}."
+        winner_note = f"{favorite} is the model's clearest edge."
+    score_note = f"Most common exact score: {score_pct}% of simulations." if score_pct is not None else "Most common exact score from the model."
+    regulation_note = " Draw is shown during regulation time before extra time or penalties." if is_knockout else ""
+
+    st.markdown(f"""
+    <div class="prediction-panel">
+        <div class="prediction-topline">
+            <span>{stage_label}</span>
+            <span>{match_date}</span>
+        </div>
+        <div class="prediction-grid">
+            <div class="prediction-main">
+                <div class="prediction-teams">
+                    <span class="team-dot" style="background:{home_color}"></span>
+                    <span>{home_team}</span>
+                    <span class="prediction-vs">vs</span>
+                    <span>{away_team}</span>
+                    <span class="team-dot" style="background:{away_color}"></span>
+                </div>
+                <div class="prediction-kicker">Model Verdict</div>
+                <div class="prediction-verdict">{line}</div>
+                <div class="prediction-copy">
+                    {favorite_pct}% is the headline probability. {score_note}{regulation_note}
+                </div>
+            </div>
+            <div class="prediction-side">
+                <div class="prediction-metric">
+                    <div class="prediction-metric-label">Headline Probability</div>
+                    <div class="prediction-metric-value">{favorite_pct}%</div>
+                    <div class="prediction-metric-note">{winner_note}</div>
+                </div>
+                <div class="prediction-metric">
+                    <div class="prediction-metric-label">Most Likely Score</div>
+                    <div class="prediction-metric-value" style="font-size:1.9rem">{scoreline}</div>
+                    <div class="prediction-metric-note">{home_team} vs {away_team}</div>
+                </div>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -496,16 +573,9 @@ def chart_donut(home_team, away_team, p1, pd_, p2, is_knockout=False):
     c1 = get_team_color(home_team, other_team=away_team)
     c2 = get_team_color(away_team, other_team=home_team)
 
-    if is_knockout:
-        # No draw slice — a knockout match always has a winner, so this is
-        # a straight win-vs-win split rather than a three-way pie.
-        labels = [home_team, away_team]
-        values = [p1, p2]
-        colors = [c1, c2]
-    else:
-        labels = [home_team, 'Draw', away_team]
-        values = [p1, pd_, p2]
-        colors = [c1, '#131e30', c2]
+    labels = [home_team, 'Draw', away_team]
+    values = [p1, pd_, p2]
+    colors = [c1, '#2b3547', c2]
 
     fig = go.Figure(go.Pie(
         labels=labels,
@@ -518,8 +588,7 @@ def chart_donut(home_team, away_team, p1, pd_, p2, is_knockout=False):
         sort=False,
     ))
 
-    winner     = home_team if p1 > p2 else away_team if p2 > p1 else 'Draw'
-    winner_pct = max(p1, p2) if winner != 'Draw' else pd_
+    winner, winner_pct = favorite_from_probs(home_team, away_team, p1, pd_, p2, is_knockout)
 
     fig.add_annotation(text=f'<b>{winner_pct}%</b>', x=0.5, y=0.56,
         font=dict(size=26, color='#ffffff', family='Inter, sans-serif'),
@@ -539,33 +608,26 @@ def render_donut_with_boxes(home_team, away_team, p1, pd_, p2, is_knockout=False
         st.plotly_chart(chart_donut(home_team, away_team, p1, pd_, p2, is_knockout=is_knockout),
                         use_container_width=True, config={'displayModeBar': False})
     with col2:
-        highlight = 'home' if p1 > p2 else 'away'
-        if is_knockout:
-            items = [(home_team, p1, 'home'), (away_team, p2, 'away')]
-        else:
-            items = [(home_team, p1, 'home'), ('Draw', pd_, None), (away_team, p2, 'away')]
+        top_label, _ = favorite_from_probs(home_team, away_team, p1, pd_, p2, is_knockout)
+        items = [(home_team, p1, 'home'), ('Draw', pd_, 'draw'), (away_team, p2, 'away')]
         boxes_html = ''
         for label, pct, side in items:
-            is_hl     = side == highlight
-            border    = 'border-color:#1e3a5f;' if is_hl else ''
-            bg        = 'background:#0a1628;' if is_hl else ''
-            pct_color = '#4a9eff' if is_hl else '#1e2d45'
-            sub_text  = 'chance of winning' if side else 'chance of draw'
+            is_hl     = label == top_label
+            box_cls   = 'prob-box prob-box-highlight' if is_hl else 'prob-box'
+            pct_color = '#7dd3fc' if is_hl else '#64748b'
+            if side == 'draw':
+                sub_text = 'chance of draw (during regulation time)' if is_knockout else 'chance of draw'
+            else:
+                sub_text = 'chance of winning'
             boxes_html += f"""
-            <div style="background:#0d1526;border:1px solid #131e30;{border}{bg}
-                        border-radius:12px;padding:0;text-align:center;
-                        flex:1;display:flex;flex-direction:column;
-                        align-items:center;justify-content:center;">
-                <div style="font-size:0.65rem;font-weight:700;letter-spacing:2px;
-                            text-transform:uppercase;color:#3d4f6b;margin-bottom:6px">{label}</div>
-                <div style="font-size:2.4rem;font-weight:900;color:{pct_color};line-height:1">{pct}%</div>
-                <div style="font-size:0.72rem;color:#3d4f6b;margin-top:6px">{sub_text}</div>
+            <div class="{box_cls}">
+                <div>
+                    <div class="prob-label">{label}</div>
+                    <div class="prob-sub">{sub_text}</div>
+                </div>
+                <div class="prob-value" style="color:{pct_color}">{pct}%</div>
             </div>"""
-        st.markdown(f"""
-        <div style="display:flex;flex-direction:column;gap:8px;height:300px;padding:4px 0;">
-            {boxes_html}
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="prob-stack">{boxes_html}</div>', unsafe_allow_html=True)
 
 # ── Confidence meter ────────────────────────────────────────────────────────
 def render_confidence_meter(home_team, away_team, p1, pd_, p2, is_knockout=False):
@@ -575,13 +637,10 @@ def render_confidence_meter(home_team, away_team, p1, pd_, p2, is_knockout=False
     close to a toss-up even if it has a nominal favorite; a wide gap means
     it's genuinely backing one outcome.
 
-    For knockout matches, Draw is excluded from the ranking entirely (it's
-    not a valid final outcome), so the gap is simply between the two teams.
+    Draw stays in the ranking for knockout matches because this page shows
+    regulation-time probabilities before extra time or penalties.
     """
-    if is_knockout:
-        outcomes = [('home', home_team, p1), ('away', away_team, p2)]
-    else:
-        outcomes = [('home', home_team, p1), ('draw', 'Draw', pd_), ('away', away_team, p2)]
+    outcomes = [('home', home_team, p1), ('draw', 'Draw', pd_), ('away', away_team, p2)]
     ranked   = sorted(outcomes, key=lambda x: x[2], reverse=True)
     top_key, top_label, top_val = ranked[0]
     _, _, second_val            = ranked[1]
@@ -1398,27 +1457,21 @@ def show_upcoming_match(m, data):
     xg1, xg2   = sim['team1_xg'], sim['team2_xg']
 
     render_model_intro()
-    render_verdict(home_name, away_name, p1, pd_, p2, sim, is_knockout=is_knockout)
+    render_prediction_panel(
+        home_name, away_name, fmt_stage(m['stage']), fmt_date_local(m['date']),
+        p1, pd_, p2, sim, c1_color, c2_color, is_knockout=is_knockout
+    )
 
-    st.markdown(f"""
-    <div class="match-hero" style="border-top:3px solid {c1_color}">
-        <div class="hero-meta">{fmt_stage(m['stage'])} · {fmt_date_local(m['date'])}</div>
-        <div class="hero-teams">{home_name} <span class="hero-vs">vs</span> {away_name}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    sec_header("Main Number: Win Probability" + (" (regulation time)" if is_knockout else ""))
+    sec_header("Main Number: Win Probability" + (" (during regulation time)" if is_knockout else ""))
     if is_knockout:
         st.markdown(
             '<div style="color:#5b6d8c;font-size:0.82rem;margin-bottom:12px">'
             'This is a knockout match — a draw after 90 minutes goes to extra time and penalties. '
             'The percentages below reflect regulation time only.</div>',
             unsafe_allow_html=True
-        )
+    )
     render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
     render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
-
-    render_top_score_primary(home_name, away_name, sim)
 
     with st.expander("See all possible scores"):
         st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
