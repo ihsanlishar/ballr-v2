@@ -1512,9 +1512,6 @@ def show_finished_match(m, data):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Key factors ──
-    render_key_factors(home_name, away_name, hs, aws, sim)
-
     # ── Six-stat radar ──
     sec_header("Team Comparison Radar")
     st.markdown(
@@ -1569,6 +1566,9 @@ def show_finished_match(m, data):
         </div>
         """, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Key factors ──
+    render_key_factors(home_name, away_name, hs, aws, sim)
 
 # ── UPCOMING MATCH ─────────────────────────────────────────────────────────
 def show_upcoming_match(m, data):
