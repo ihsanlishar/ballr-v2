@@ -272,6 +272,9 @@ st.markdown("""
     /* ── Heatmap ── */
     .heatmap-wrap { background:#0d1526;border:1px solid #131e30;border-radius:14px;padding:24px;margin:8px 0; }
 
+    .detail-block { background:#0a0f1c;border:1px solid #16233a;border-top:3px solid #2c4a75;border-radius:12px;padding:22px 24px;margin:8px 0 26px 0; }
+    .detail-block-inner + .detail-block-inner { margin-top:22px;padding-top:22px;border-top:1px solid #131e30; }
+
     /* ── Insight box ── */
     .insight-box { background:#0d1526;border-left:3px solid #4a9eff;border-radius:0 10px 10px 0;padding:16px 20px;margin:16px 0;font-size:0.85rem;color:#64748b;line-height:1.7; }
     .insight-box strong { color:#e2e8f0; }
@@ -1491,15 +1494,23 @@ def show_finished_match(m, data):
                 if first:
                     st.markdown(stat_box(f"{first[0]['minute']}'", f"First Goal · {first[0]['player']}"), unsafe_allow_html=True)
 
-    with st.expander("Technical details"):
-        sec_header("Form & Statistical Comparison")
-        st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
-                        use_container_width=True, config={'displayModeBar': False})
-        render_form_blocks(home_name, away_name, hs, aws)
+    sec_header("Technical Details")
+    st.markdown('<div class="detail-block">', unsafe_allow_html=True)
 
-        sec_header("Recent Form")
-        st.markdown('<div class="plain-card">This summarizes whether each team was trending up or down before the match. The hidden technical score is weighted toward more recent results.</div>', unsafe_allow_html=True)
-        render_momentum_cards(home_name, away_name, sim)
+    st.markdown('<div class="detail-block-inner">', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#5b6d8c;margin-bottom:10px">Form & Statistical Comparison</div>', unsafe_allow_html=True)
+    st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
+                    use_container_width=True, config={'displayModeBar': False})
+    render_form_blocks(home_name, away_name, hs, aws)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="detail-block-inner">', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#5b6d8c;margin-bottom:10px">Recent Form</div>', unsafe_allow_html=True)
+    st.markdown('<div class="plain-card">This summarizes whether each team was trending up or down before the match. The hidden technical score is weighted toward more recent results.</div>', unsafe_allow_html=True)
+    render_momentum_cards(home_name, away_name, sim)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Key factors ──
     render_key_factors(home_name, away_name, hs, aws, sim)
@@ -1539,25 +1550,25 @@ def show_finished_match(m, data):
     render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
     render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
 
-    with st.expander("See all score possibilities"):
-        st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.plotly_chart(chart_score_heatmap(home_name, away_name,
-                sim.get('score_dist', {}), actual_score),
-                use_container_width=True, config={'displayModeBar': False})
-        with col2:
-            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-            st.markdown(f"""
-            <div style="font-size:0.72rem;color:#3d4f6b;line-height:1.8">
-                Each cell is one exact score.<br><br>
-                <span style="color:#e2e8f0;font-weight:700">Columns</span> = {home_name} goals<br>
-                <span style="color:#e2e8f0;font-weight:700">Rows</span> = {away_name} goals<br><br>
-                Brighter cells happened more often in the simulations.<br><br>
-                {'<span style="color:#4ade80;font-weight:700">Green border = actual result</span>' if actual_score else ''}
-            </div>
-            """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    sec_header("Score Probability Heatmap")
+    st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.plotly_chart(chart_score_heatmap(home_name, away_name,
+            sim.get('score_dist', {}), actual_score),
+            use_container_width=True, config={'displayModeBar': False})
+    with col2:
+        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="font-size:0.72rem;color:#3d4f6b;line-height:1.8">
+            Each cell is one exact score.<br><br>
+            <span style="color:#e2e8f0;font-weight:700">Columns</span> = {home_name} goals<br>
+            <span style="color:#e2e8f0;font-weight:700">Rows</span> = {away_name} goals<br><br>
+            Brighter cells happened more often in the simulations.<br><br>
+            {'<span style="color:#4ade80;font-weight:700">Green border = actual result</span>' if actual_score else ''}
+        </div>
+        """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ── UPCOMING MATCH ─────────────────────────────────────────────────────────
 def show_upcoming_match(m, data):
@@ -1590,23 +1601,23 @@ def show_upcoming_match(m, data):
     render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
     render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
 
-    with st.expander("See all possible scores"):
-        st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.plotly_chart(chart_score_heatmap(home_name, away_name, sim.get('score_dist', {})),
-                            use_container_width=True, config={'displayModeBar': False})
-        with col2:
-            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-            st.markdown(f"""
-            <div style="font-size:0.72rem;color:#3d4f6b;line-height:1.8">
-                Each cell is one exact score.<br><br>
-                <span style="color:#e2e8f0;font-weight:700">Columns</span> = {home_name} goals<br>
-                <span style="color:#e2e8f0;font-weight:700">Rows</span> = {away_name} goals<br><br>
-                Brighter cells happened more often in the simulations.
-            </div>
-            """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+    sec_header("Score Probability Heatmap")
+    st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.plotly_chart(chart_score_heatmap(home_name, away_name, sim.get('score_dist', {})),
+                        use_container_width=True, config={'displayModeBar': False})
+    with col2:
+        st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="font-size:0.72rem;color:#3d4f6b;line-height:1.8">
+            Each cell is one exact score.<br><br>
+            <span style="color:#e2e8f0;font-weight:700">Columns</span> = {home_name} goals<br>
+            <span style="color:#e2e8f0;font-weight:700">Rows</span> = {away_name} goals<br><br>
+            Brighter cells happened more often in the simulations.
+        </div>
+        """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     render_key_factors(home_name, away_name, hs, aws, sim)
 
@@ -1620,31 +1631,41 @@ def show_upcoming_match(m, data):
     st.plotly_chart(chart_team_radar(home_name, away_name, hs, aws, sim),
                     use_container_width=True, config={'displayModeBar': False})
 
-    with st.expander("Technical details"):
-        sec_header("Expected Goals")
-        render_expected_goals_plain(home_name, away_name, xg1, xg2)
-        col1, col2 = st.columns(2)
-        with col1: st.markdown(stat_box(xg1, f"{home_name} expected goals"), unsafe_allow_html=True)
-        with col2: st.markdown(stat_box(xg2, f"{away_name} expected goals"), unsafe_allow_html=True)
-        total_xg = xg1 + xg2 if (xg1 + xg2) > 0 else 1
-        st.markdown(f"""
-        <div style="display:flex;border-radius:6px;overflow:hidden;height:6px;margin:8px 0 4px 0">
-            <div style="width:{xg1/total_xg*100}%;background:{c1_color}"></div>
-            <div style="width:{xg2/total_xg*100}%;background:{c2_color}"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#3d4f6b;margin-bottom:8px">
-            <span>{home_name}</span><span>{away_name}</span>
-        </div>
-        """, unsafe_allow_html=True)
+    sec_header("Technical Details")
+    st.markdown('<div class="detail-block">', unsafe_allow_html=True)
 
-        sec_header("Form & Statistical Comparison")
-        st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
-                        use_container_width=True, config={'displayModeBar': False})
-        render_form_blocks(home_name, away_name, hs, aws)
+    st.markdown('<div class="detail-block-inner">', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#5b6d8c;margin-bottom:10px">Expected Goals</div>', unsafe_allow_html=True)
+    render_expected_goals_plain(home_name, away_name, xg1, xg2)
+    col1, col2 = st.columns(2)
+    with col1: st.markdown(stat_box(xg1, f"{home_name} expected goals"), unsafe_allow_html=True)
+    with col2: st.markdown(stat_box(xg2, f"{away_name} expected goals"), unsafe_allow_html=True)
+    total_xg = xg1 + xg2 if (xg1 + xg2) > 0 else 1
+    st.markdown(f"""
+    <div style="display:flex;border-radius:6px;overflow:hidden;height:6px;margin:8px 0 4px 0">
+        <div style="width:{xg1/total_xg*100}%;background:{c1_color}"></div>
+        <div style="width:{xg2/total_xg*100}%;background:{c2_color}"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#3d4f6b;margin-bottom:8px">
+        <span>{home_name}</span><span>{away_name}</span>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        sec_header("Recent Form")
-        st.markdown('<div class="plain-card">This summarizes whether each team has been trending up or down before the match. The hidden technical score is weighted toward more recent results.</div>', unsafe_allow_html=True)
-        render_momentum_cards(home_name, away_name, sim)
+    st.markdown('<div class="detail-block-inner">', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#5b6d8c;margin-bottom:10px">Form & Statistical Comparison</div>', unsafe_allow_html=True)
+    st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
+                    use_container_width=True, config={'displayModeBar': False})
+    render_form_blocks(home_name, away_name, hs, aws)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="detail-block-inner">', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.78rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#5b6d8c;margin-bottom:10px">Recent Form</div>', unsafe_allow_html=True)
+    st.markdown('<div class="plain-card">This summarizes whether each team has been trending up or down before the match. The hidden technical score is weighted toward more recent results.</div>', unsafe_allow_html=True)
+    render_momentum_cards(home_name, away_name, sim)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
     sec_header("Plain-English Summary")
     favorite, favorite_pct = favorite_from_probs(home_name, away_name, p1, pd_, p2, is_knockout)
