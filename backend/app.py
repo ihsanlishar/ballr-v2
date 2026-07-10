@@ -70,7 +70,7 @@ def _save_match_cache(cache_dict):
 # old, not-yet-played prediction gets recomputed with the current code
 # instead of being served forever unchanged. Bump this any time you ship
 # a change that should apply to matches already sitting in the cache.
-CACHE_SCHEMA_VERSION = 3
+CACHE_SCHEMA_VERSION = 5
 
 def _is_already_frozen(cached_entry):
     """
@@ -260,31 +260,7 @@ def match(home_id, away_id):
                 away_name = m['awayTeam']['name']
                 break
 
-    # Group stage allows draws; every knockout round (Round of 32 through
-    # the Final, including the third-place playoff) always produces a
-    # winner via extra time / penalties, so those get win-vs-win-only
-    # probabilities instead of a win/draw/win split.
-    is_knockout = bool(match_info) and match_info.get('stage') != 'GROUP_STAGE'
-
-    simulation = run_simulation(home_name, away_name, home_stats, away_stats, is_knockout=is_knockout)
-
-    # Belt-and-braces guarantee: no matter what path produced this
-    # simulation, a knockout match's win percentages must sum to 100 with
-    # zero draw. Runs independently of whatever is_knockout value reached
-    # run_simulation, so a stale/mismatched upstream state can't leak a
-    # non-renormalized three-way split into a match that can't legally end
-    # in a draw.
-    if is_knockout and simulation:
-        p1 = simulation['team1_win_pct']
-        p2 = simulation['team2_win_pct']
-        decisive_total = p1 + p2
-        if decisive_total > 0:
-            simulation['team1_win_pct'] = round(p1 / decisive_total * 100, 1)
-            simulation['team2_win_pct'] = round(p2 / decisive_total * 100, 1)
-        else:
-            simulation['team1_win_pct'] = simulation['team2_win_pct'] = 50.0
-        simulation['draw_pct'] = 0.0
-        simulation['is_knockout'] = True
+    simulation = run_simulation(home_name, away_name, home_stats, away_stats)
 
     events = None
     if current_status == 'FINISHED':
@@ -307,7 +283,7 @@ def match(home_id, away_id):
     # Only permanently freeze this result if we actually found the fixture
     # in /fixtures. If match_info is None, this computation happened on a
     # fallback path (fixtures fetch failed or the match wasn't found) —
-    # is_knockout, stage, and possibly team names are all unreliable in
+    # stage and possibly team names are unreliable in
     # that case. Caching it anyway would lock in a wrong result forever
     # (it would look "up to date" under the current schema version and
     # never get a chance to self-correct). Skip the cache write so the
