@@ -213,6 +213,7 @@ def parse_team_form(matches_data, team_id, apply_recent_defense_boost=True):
     results              = []
     weighted_gf          = []
     weighted_ga          = []
+    raw_gf               = []
     total_weight_gf      = 0
     total_weight_ga      = 0
     weighted_clean_sheets = 0.0
@@ -244,6 +245,7 @@ def parse_team_form(matches_data, team_id, apply_recent_defense_boost=True):
 
         weighted_gf.append(gf * gf_weight)
         weighted_ga.append(ga * ga_weight)
+        raw_gf.append(gf)
 
         if ga == 0:
             weighted_clean_sheets += ga_weight
@@ -283,24 +285,25 @@ def parse_team_form(matches_data, team_id, apply_recent_defense_boost=True):
     losses = results.count('L')
 
     return {
-        'wins':              wins,
-        'draws':             draws,
-        'losses':            losses,
-        'played':            n,
-        'win_rate':          round(wins / n, 3),
-        'goals_per_game':    round(wpg, 3),
-        'conceded_per_game': round(cpg, 3),
-        'clean_sheet_rate':  round(clean_sheet_rate, 3),
-        'gd_per_game':       round(wpg - cpg, 3),
-        'form_string':       ''.join(results[:5]),
-        'wc_form':           ''.join(wc_form) or ''.join(results[:5]),
-        'sample_size':       n,
+        'wins':                wins,
+        'draws':               draws,
+        'losses':              losses,
+        'played':              n,
+        'win_rate':            round(wins / n, 3),
+        'goals_per_game':      round(wpg, 3),
+        'goals_per_game_raw':  round(sum(raw_gf) / len(raw_gf), 3),
+        'conceded_per_game':   round(cpg, 3),
+        'clean_sheet_rate':    round(clean_sheet_rate, 3),
+        'gd_per_game':         round(wpg - cpg, 3),
+        'form_string':         ''.join(results[:5]),
+        'wc_form':             ''.join(wc_form) or ''.join(results[:5]),
+        'sample_size':         n,
     }
 
 def _default_stats():
     return {
         'wins': 0, 'draws': 0, 'losses': 0, 'played': 0,
-        'win_rate': 0.33, 'goals_per_game': 1.2,
+        'win_rate': 0.33, 'goals_per_game': 1.2, 'goals_per_game_raw': 1.2,
         'conceded_per_game': 1.2, 'clean_sheet_rate': 0.2,
         'gd_per_game': 0.0, 'form_string': '', 'wc_form': '',
         'sample_size': 0,
