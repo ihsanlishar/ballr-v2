@@ -136,6 +136,74 @@ def clear_all_match_cache():
         _save_match_cache(_finished_match_cache)
     return jsonify({'cleared_count': count, 'message': f'Cleared {count} cached match predictions.'})
 
+@app.route('/admin/refetch-events/<int:home_id>/<int:away_id>')
+def refetch_events(home_id, away_id):
+    """
+    Manual escape hatch for a specific gap: a finished match's SCORE and
+    PREDICTION must never change once frozen (that's the whole integrity
+    guarantee this app is built around) — but goal-scorer EVENTS are a
+    separate concern entirely. If the SerpAPI/Google lookup failed the
+    first time a finished match was cached (e.g. SERPAPI_KEY wasn't set on
+    Railway yet at that moment), 'events' gets permanently stuck at None,
+    with no automatic retry, since the freeze logic doesn't distinguish
+    "we succeeded" from "we failed."
+
+    This route retries JUST the events fetch for one match and, if it
+    succeeds this time, patches only the 'events' field into the existing
+    frozen cache entry — the score, win probabilities, and everything else
+    stay byte-for-byte untouched.
+
+    Deliberately manual (not automatic on every page view) because SerpAPI
+    search credits are metered, unlike football-data.org's free-tier rate
+    limit — this makes at most ONE SerpAPI call per invocation, and only
+    if there's actually something to retry.
+    """
+    cache_key = f"{home_id}-{away_id}"
+    reverse_key = f"{away_id}-{home_id}"
+
+    with _match_cache_lock:
+        entry = _finished_match_cache.get(cache_key) or _finished_match_cache.get(reverse_key)
+        actual_key = cache_key if cache_key in _finished_match_cache else reverse_key
+
+    if entry is None:
+        return jsonify({'message': 'No cached entry found for this match.'})
+    if entry.get('status') != 'FINISHED':
+        return jsonify({'message': 'This match is not marked FINISHED yet — nothing to retry.'})
+    if entry.get('events') is not None:
+        return jsonify({'message': 'This match already has events cached — no retry needed.', 'events': entry['events']})
+
+    new_events = get_match_events(entry['home_name'], entry['away_name'])
+
+    if new_events is None:
+        return jsonify({'message': 'Retry attempted, but still no events found for this match (Google may genuinely not have coverage for it).'})
+
+    with _match_cache_lock:
+        entry['events'] = new_events
+        _finished_match_cache[actual_key] = entry
+        _save_match_cache(_finished_match_cache)
+
+    return jsonify({'message': 'Success — events fetched and patched into the frozen cache entry.', 'events': new_events})
+
+@app.route('/admin/list-matches-missing-events')
+def list_matches_missing_events():
+    """
+    Read-only — makes ZERO SerpAPI calls. Scans the existing cache and
+    reports which finished matches are missing events, so you can see the
+    scope of the problem and decide which ones are worth spending SerpAPI
+    credits on retrying via /admin/refetch-events/<home_id>/<away_id>,
+    rather than guessing or retrying blindly.
+    """
+    with _match_cache_lock:
+        missing = []
+        for key, entry in _finished_match_cache.items():
+            if entry.get('status') == 'FINISHED' and entry.get('events') is None:
+                missing.append({
+                    'cache_key': key,
+                    'home_name': entry.get('home_name'),
+                    'away_name': entry.get('away_name'),
+                })
+    return jsonify({'count': len(missing), 'matches': missing})
+
 @app.route('/fixtures')
 def fixtures():
     try:
