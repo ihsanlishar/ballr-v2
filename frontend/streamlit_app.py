@@ -457,8 +457,7 @@ def render_model_intro():
                 "score grid are supporting details."
             )
 
-def render_verdict(home_team, away_team, p1, pd_, p2, sim, is_knockout=False, retrospective=False,
-                    actual_score=None, was_correct=None):
+def render_verdict(home_team, away_team, p1, pd_, p2, sim, is_knockout=False, retrospective=False):
     favorite, favorite_pct = favorite_from_probs(home_team, away_team, p1, pd_, p2, is_knockout)
     scoreline, score_pct = top_scoreline(sim)
     if favorite == 'Draw':
@@ -471,19 +470,11 @@ def render_verdict(home_team, away_team, p1, pd_, p2, sim, is_knockout=False, re
     if is_knockout:
         sub += " For knockout matches, win probability is shown for regulation time before extra time or penalties."
     label = "Model Verdict" if not retrospective else "Model Verdict Before Kickoff"
-
-    result_badge = ''
-    if retrospective and actual_score is not None and was_correct is not None:
-        badge_color = '#4ade80' if was_correct else '#f87171'
-        badge_text  = '✅ Correct prediction' if was_correct else '❌ Incorrect prediction'
-        result_badge = f'<div style="margin-top:12px;font-weight:800;font-size:0.95rem;color:{badge_color}">{badge_text} · Actual result: {actual_score}</div>'
-
     st.markdown(f"""
     <div class="verdict-card">
         <div class="verdict-label">{label}</div>
         <div class="verdict-line">{line}</div>
         <div class="verdict-sub">{sub}</div>
-        {result_badge}
     </div>
     """, unsafe_allow_html=True)
 
@@ -1330,16 +1321,7 @@ def show_finished_match(m, data):
 
     is_knockout = m['stage'] != 'GROUP_STAGE'
     p1, pd_, p2 = sim['team1_win_pct'], sim['draw_pct'], sim['team2_win_pct']
-    predicted_winner = (
-        home_name if p1 > p2 and p1 > pd_
-        else away_name if p2 > p1 and p2 > pd_
-        else "a draw"
-    )
-    was_correct = (predicted_winner == winner) or (predicted_winner == "a draw" and winner is None)
-
-    render_model_intro()
-    render_verdict(home_name, away_name, p1, pd_, p2, sim, is_knockout=is_knockout, retrospective=True,
-                    actual_score=actual_score, was_correct=was_correct)
+    render_verdict(home_name, away_name, p1, pd_, p2, sim, is_knockout=is_knockout, retrospective=True)
 
     # ── Goal scorers ──
     home_ev    = events.get(home_name, {})
@@ -1416,42 +1398,53 @@ def show_finished_match(m, data):
                 if first:
                     st.markdown(stat_box(f"{first[0]['minute']}'", f"First Goal · {first[0]['player']}"), unsafe_allow_html=True)
 
-    with st.expander("Technical details"):
-        sec_header("Form & Statistical Comparison")
-        st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
-                        use_container_width=True, config={'displayModeBar': False})
-        render_form_blocks(home_name, away_name, hs, aws)
+    # ── Form + stats ──
+    sec_header("Form & Statistical Comparison")
+    st.plotly_chart(chart_stats_comparison(home_name, away_name, hs, aws),
+                    use_container_width=True, config={'displayModeBar': False})
+    render_form_blocks(home_name, away_name, hs, aws)
 
-        sec_header("Recent Form")
-        st.markdown('<div class="plain-card">This summarizes whether each team was trending up or down before the match. The hidden technical score is weighted toward more recent results.</div>', unsafe_allow_html=True)
-        render_momentum_cards(home_name, away_name, sim)
+    # ── Recent form ──
+    sec_header("Recent Form")
+    st.markdown('<div class="plain-card">This summarizes whether each team was trending up or down before the match. The hidden technical score is weighted toward more recent results.</div>', unsafe_allow_html=True)
+    render_momentum_cards(home_name, away_name, sim)
 
     # ── Key factors ──
     render_key_factors(home_name, away_name, hs, aws, sim)
 
-    # ── Prediction breakdown ──
-    # The headline (favorite, scoreline, correct/incorrect) is already shown
-    # in the verdict card above — this section is deliberately just the
-    # supporting detail (exact percentages, confidence gap), not a repeat
-    # of the same conclusion in different words.
-    sec_header("Prediction Breakdown" + (" (in regulation time)" if is_knockout else ""))
+    # ── Prediction retrospective ──
+    sec_header("What the Model Predicted" + (" (in regulation time)" if is_knockout else ""))
+    predicted_winner = (
+        home_name if p1 > p2 and p1 > pd_
+        else away_name if p2 > p1 and p2 > pd_
+        else "a draw"
+    )
+    was_correct   = (predicted_winner == winner) or (predicted_winner == "a draw" and winner is None)
+    acc_color     = '#4ade80' if was_correct else '#f87171'
+    acc_text      = '✅ Correct prediction' if was_correct else '❌ Incorrect prediction'
     top_pred      = sim['top_scores'][0][0] if sim['top_scores'] else '—'
     score_correct = top_pred == actual_score
 
-    if score_correct:
-        st.markdown(
-            '<div class="plain-card" style="color:#4ade80;font-weight:700">✅ Exact score predicted correctly.</div>',
-            unsafe_allow_html=True
-        )
-    if is_knockout:
-        st.markdown(
-            '<div class="plain-card">In a knockout match, a drawn scoreline after 90 minutes is resolved by '
-            'extra time and penalties — the percentages below reflect regulation time only.</div>',
-            unsafe_allow_html=True
-        )
+    knockout_note = (
+        ' <span style="color:#5b6d8c">(In a knockout match, a drawn scoreline after 90 minutes is resolved by extra time and penalties — the percentages above reflect regulation time only.)</span>'
+        if is_knockout else ''
+    )
+
+    st.markdown(f"""
+    <div class="insight-box">
+        The model gave <strong>{home_name}</strong> a <strong>{p1}% win probability</strong>,
+        <strong>{away_name}</strong> <strong>{p2}%</strong>, with a <strong>{pd_}% draw chance</strong>.
+        Most likely score predicted: <strong>{top_pred}</strong>.
+        Actual result: <strong>{actual_score}</strong>. &nbsp;
+        <span style="color:{acc_color};font-weight:700">{acc_text}</span>
+        {'&nbsp;·&nbsp;<span style="color:#4ade80;font-weight:700">✅ Exact score predicted</span>' if score_correct else ''}
+        {knockout_note}
+    </div>
+    """, unsafe_allow_html=True)
 
     render_donut_with_boxes(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
     render_confidence_meter(home_name, away_name, p1, pd_, p2, is_knockout=is_knockout)
+    render_top_score_primary(home_name, away_name, sim, actual_score=actual_score)
 
     with st.expander("See all score possibilities"):
         st.markdown('<div class="heatmap-wrap">', unsafe_allow_html=True)
