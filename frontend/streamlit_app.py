@@ -687,81 +687,6 @@ def render_confidence_meter(home_team, away_team, p1, pd_, p2, is_knockout=False
     """, unsafe_allow_html=True)
 
 # ── Chart: Stats comparison ────────────────────────────────────────────────
-# ── Six-stat radar ────────────────────────────────────────────────────────
-# Calibration bounds below are set from real values observed across this
-# tournament's actual teams (e.g. France ~2.7-3.1 xG, ~0.28 conceded,
-# ~0.72 clean sheet rate, ~2.39 GD/game) so a genuinely elite team's shape
-# fills most of the hexagon, rather than an arbitrary 0-10 scale that could
-# make a strong team look lopsided just from poor axis calibration.
-RADAR_BOUNDS = {
-    'xg':          (0.4, 3.2),    # model-adjusted goals/game
-    'raw_goals':   (0.4, 3.2),    # unweighted goals/game — same scale as xg on purpose,
-                                   # so a gap between these two axes is visible when a
-                                   # team's raw average is propped up by weak opposition
-    'conceded':    (0.2, 2.2),    # inverted — lower conceded = higher solidity score
-    'clean_sheet': (0.05, 0.75),  # weighted clean sheet rate (0-1 fraction)
-    'gd':          (-1.5, 2.5),   # weighted goal difference per game
-    'momentum':    (-1.0, 1.0),   # recency-weighted form trend
-}
-
-def _normalize_radar(value, bounds_key, invert=False):
-    floor, cap = RADAR_BOUNDS[bounds_key]
-    if invert:
-        pct = (cap - value) / (cap - floor) * 100
-    else:
-        pct = (value - floor) / (cap - floor) * 100
-    return round(max(0, min(pct, 100)), 1)
-
-def chart_team_radar(home_team, away_team, home_stats, away_stats, sim):
-    c1 = get_team_color(home_team, other_team=away_team)
-    c2 = get_team_color(away_team, other_team=home_team)
-
-    axes = ['xG', 'Raw Goals/Game', 'Defensive Solidity', 'Clean Sheet Rate', 'Goal Diff/Game', 'Form Momentum']
-
-    def build_values(stats, momentum):
-        return [
-            _normalize_radar(stats['goals_per_game'], 'xg'),
-            _normalize_radar(stats.get('goals_per_game_raw', stats['goals_per_game']), 'raw_goals'),
-            _normalize_radar(stats['conceded_per_game'], 'conceded', invert=True),
-            _normalize_radar(stats['clean_sheet_rate'], 'clean_sheet'),
-            _normalize_radar(stats['gd_per_game'], 'gd'),
-            _normalize_radar(momentum, 'momentum'),
-        ]
-
-    home_values = build_values(home_stats, sim.get('home_momentum', 0))
-    away_values = build_values(away_stats, sim.get('away_momentum', 0))
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(
-        r=home_values + [home_values[0]],
-        theta=axes + [axes[0]],
-        fill='toself', name=home_team,
-        line=dict(color=c1, width=2),
-        fillcolor=hex_to_rgba(c1, 0.25),
-    ))
-    fig.add_trace(go.Scatterpolar(
-        r=away_values + [away_values[0]],
-        theta=axes + [axes[0]],
-        fill='toself', name=away_team,
-        line=dict(color=c2, width=2),
-        fillcolor=hex_to_rgba(c2, 0.25),
-    ))
-    fig.update_layout(
-        polar=dict(
-            bgcolor='rgba(0,0,0,0)',
-            radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, gridcolor='#1e293b'),
-            angularaxis=dict(gridcolor='#1e293b', tickfont=dict(color='#8a9bb8', size=11)),
-        ),
-        showlegend=True,
-        legend=dict(orientation='h', yanchor='bottom', y=-0.15, x=0.5, xanchor='center',
-                    font=dict(color='#e2e8f0')),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(l=40, r=40, t=20, b=40),
-        height=420,
-    )
-    return fig
-
 def chart_stats_comparison(home_team, away_team, home_stats, away_stats):
     c1 = get_team_color(home_team, other_team=away_team)
     c2 = get_team_color(away_team, other_team=home_team)
@@ -1504,17 +1429,6 @@ def show_finished_match(m, data):
     # ── Key factors ──
     render_key_factors(home_name, away_name, hs, aws, sim)
 
-    # ── Six-stat radar ──
-    sec_header("Team Comparison Radar")
-    st.markdown(
-        '<div class="plain-card">Six key stats side by side — a bigger, more filled-out shape means a '
-        'stronger all-around team. Notice when "Raw Goals/Game" sits further out than "xG" — that\'s a sign '
-        'some of a team\'s scoring came against weaker opposition.</div>',
-        unsafe_allow_html=True
-    )
-    st.plotly_chart(chart_team_radar(home_name, away_name, hs, aws, sim),
-                    use_container_width=True, config={'displayModeBar': False})
-
     # ── Prediction breakdown ──
     # The headline (favorite, scoreline, correct/incorrect) is already shown
     # in the verdict card above — this section is deliberately just the
@@ -1609,16 +1523,6 @@ def show_upcoming_match(m, data):
         st.markdown('</div>', unsafe_allow_html=True)
 
     render_key_factors(home_name, away_name, hs, aws, sim)
-
-    sec_header("Team Comparison Radar")
-    st.markdown(
-        '<div class="plain-card">Six key stats side by side — a bigger, more filled-out shape means a '
-        'stronger all-around team. Notice when "Raw Goals/Game" sits further out than "xG" — that\'s a sign '
-        'some of a team\'s scoring came against weaker opposition.</div>',
-        unsafe_allow_html=True
-    )
-    st.plotly_chart(chart_team_radar(home_name, away_name, hs, aws, sim),
-                    use_container_width=True, config={'displayModeBar': False})
 
     with st.expander("Technical details"):
         sec_header("Expected Goals")
