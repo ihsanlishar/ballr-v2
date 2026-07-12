@@ -3,7 +3,7 @@ import sys
 import json
 import datetime
 import threading
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -203,6 +203,73 @@ def list_matches_missing_events():
                     'away_name': entry.get('away_name'),
                 })
     return jsonify({'count': len(missing), 'matches': missing})
+
+@app.route('/admin/force-recompute-finished')
+def force_recompute_finished():
+    """
+    More robust alternative to /admin/refetch-events when the underlying
+    problem is get_fixtures() itself failing transiently — that failure
+    blocks the whole match_info lookup, which blocks recognizing the match
+    as FINISHED, which blocks the events fetch ever being attempted at all.
+
+    This route takes the team info you ALREADY know (from Streamlit's own
+    successful /fixtures call) as explicit query params, and rebuilds the
+    full cache entry directly — home_stats, away_stats, simulation, AND
+    events — without ever calling get_fixtures() or depending on match_info
+    at all. Since get_team_stats() and get_match_events() don't depend on
+    fixtures lookups, this sidesteps the exact fragile link that's been
+    failing.
+
+    Usage:
+    /admin/force-recompute-finished?home_id=8872&away_id=770&home_name=Norway&away_name=England&stage=QUARTER_FINALS
+
+    Only use this for a match you KNOW is actually finished — this route
+    trusts your input rather than verifying status itself.
+    """
+    home_id   = request.args.get('home_id', type=int)
+    away_id   = request.args.get('away_id', type=int)
+    home_name = request.args.get('home_name')
+    away_name = request.args.get('away_name')
+    stage     = request.args.get('stage', 'UNKNOWN')
+
+    if not all([home_id, away_id, home_name, away_name]):
+        return jsonify({'error': 'Missing required params: home_id, away_id, home_name, away_name'}), 400
+
+    try:
+        home_data = get_team_stats(home_id)
+        away_data = get_team_stats(away_id)
+    except Exception as e:
+        return jsonify({'error': f'get_team_stats failed: {e}'}), 502
+
+    home_stats = parse_team_form(home_data, home_id)
+    away_stats = parse_team_form(away_data, away_id)
+    simulation = run_simulation(home_name, away_name, home_stats, away_stats)
+
+    events = get_match_events(home_name, away_name)
+
+    result = {
+        'home_stats':        home_stats,
+        'away_stats':        away_stats,
+        'simulation':        simulation,
+        'events':            events,
+        'home_name':         home_name,
+        'away_name':         away_name,
+        'status':            'FINISHED',
+        'generated_at':      datetime.datetime.utcnow().isoformat() + 'Z',
+        'prediction_locked': False,
+        'schema_version':    CACHE_SCHEMA_VERSION,
+    }
+
+    cache_key = f"{home_id}-{away_id}"
+    with _match_cache_lock:
+        _finished_match_cache[cache_key] = result
+        _save_match_cache(_finished_match_cache)
+
+    return jsonify({
+        'message': 'Recomputed and cached successfully, bypassing get_fixtures() entirely.',
+        'events_found': events is not None,
+        'result': result,
+    })
 
 @app.route('/fixtures')
 def fixtures():
