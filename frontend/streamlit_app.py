@@ -175,10 +175,23 @@ st.markdown("""
     }
 
     /* ── Tabs ── */
-    [data-testid="stTabs"] { border-bottom: 1px solid #131e30 !important; margin-bottom: 24px; }
-    [data-testid="stTabs"] button { font-size:0.8rem !important;font-weight:600 !important;color:#3d4f6b !important;padding:10px 22px !important;border-radius:0 !important;border:none !important;background:transparent !important;letter-spacing:0.5px; }
-    [data-testid="stTabs"] button:hover { color:#94a3b8 !important; }
-    [data-testid="stTabs"] button[aria-selected="true"] { color:#ffffff !important;border-bottom:2px solid #4a9eff !important; }
+    [data-testid="stTabs"] { border-bottom: none !important; margin-bottom: 24px; }
+    [data-testid="stTabs"] [data-baseweb="tab-list"] {
+        background:#0a0f1c; border:1px solid #16233a; border-radius:12px;
+        padding:5px; gap:4px; display:inline-flex; width:auto;
+    }
+    [data-testid="stTabs"] button {
+        font-size:0.78rem !important; font-weight:600 !important; color:#5b6d8c !important;
+        padding:9px 20px !important; border-radius:8px !important; border:none !important;
+        background:transparent !important; letter-spacing:0.4px;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    [data-testid="stTabs"] button:hover { color:#c3d0e8 !important; background:#111b30 !important; }
+    [data-testid="stTabs"] button[aria-selected="true"] {
+        color:#ffffff !important; background:linear-gradient(135deg,#2563eb,#1e3a8a) !important;
+        border-bottom:none !important; box-shadow:0 2px 10px rgba(37,99,235,0.35);
+    }
+    [data-testid="stTabs"] button[aria-selected="true"]:hover { background:linear-gradient(135deg,#2563eb,#1e3a8a) !important; }
 
     /* ── Date group ── */
     .date-group { font-size:0.68rem;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#3d4f6b;margin:28px 0 14px 0;display:flex;align-items:center;gap:12px; }
@@ -208,6 +221,7 @@ st.markdown("""
     /* ── Buttons ── */
     .stButton > button { background:transparent !important;border:1px solid #131e30 !important;color:#3d4f6b !important;border-radius:8px !important;font-size:0.75rem !important;font-weight:600 !important;padding:6px 0 !important;width:100% !important;letter-spacing:0.5px;transition:all 0.15s !important; }
     .stButton > button:hover { border-color:#4a9eff !important;color:#4a9eff !important;background:#0d1a2e !important; }
+    .nav-toolbar { background:#0a0f1c;border:1px solid #16233a;border-radius:12px;padding:10px 14px;margin-bottom:20px; }
 
     /* ── Match hero ── */
     .match-hero { background:linear-gradient(160deg,#0d1a2e 0%,#080d18 100%);border:1px solid #131e30;border-radius:20px;padding:48px 40px 40px 40px;text-align:center;margin-bottom:32px;position:relative;overflow:hidden; }
@@ -1307,12 +1321,18 @@ def show_home():
                     st.session_state.page = 'match'
                     st.rerun()
 
+    today_matches    = [f for f in fixtures if get_match_local_date(f['date']) == today]
+    group_matches    = [f for f in fixtures if f['stage'] == 'GROUP_STAGE']
+    knockout_matches = [f for f in fixtures if f['stage'] in knockout_stages]
+
     tab_today, tab_all, tab_group, tab_knockout = st.tabs([
-        "📅  Today", "🌍  All Matches", "⚽  Group Stage", "🏆  Knockout"
+        f"📅  Today · {len(today_matches)}",
+        f"🌍  All Matches · {len(fixtures)}",
+        f"⚽  Group Stage · {len(group_matches)}",
+        f"🏆  Knockout · {len(knockout_matches)}",
     ])
 
     with tab_today:
-        today_matches = [f for f in fixtures if get_match_local_date(f['date']) == today]
         if today_matches:
             render_grid(today_matches, "today")
         else:
@@ -1355,10 +1375,10 @@ def show_home():
                 render_grid(by_date[d], f"all_{d}")
 
     with tab_group:
-        render_grid([f for f in fixtures if f['stage'] == 'GROUP_STAGE'], "group")
+        render_grid(group_matches, "group")
 
     with tab_knockout:
-        ko = [f for f in fixtures if f["stage"] in knockout_stages]
+        ko = knockout_matches
 
         if ko:
             by_stage = {}
@@ -1698,6 +1718,7 @@ def show_match():
         st.session_state.page = 'home'
         st.rerun()
 
+    st.markdown('<div class="nav-toolbar">', unsafe_allow_html=True)
     col_back, col_refresh = st.columns([4, 1])
     with col_back:
         if st.button("← Back to fixtures"):
@@ -1711,6 +1732,7 @@ def show_match():
         if st.button("🔄 Refresh data"):
             fetch_match_data.clear()
             st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
     with st.spinner("Loading match data..."):
         try:
