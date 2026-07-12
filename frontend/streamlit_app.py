@@ -1719,7 +1719,7 @@ def show_match():
         st.rerun()
 
     st.markdown('<div class="nav-toolbar">', unsafe_allow_html=True)
-    col_back, col_refresh = st.columns([4, 1])
+    col_back, col_refresh = st.columns([4, 1], gap="large")
     with col_back:
         if st.button("← Back to fixtures"):
             st.session_state.page = 'home'
