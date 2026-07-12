@@ -1420,8 +1420,13 @@ def show_finished_match(m, data):
                     actual_score=actual_score, was_correct=was_correct)
 
     # ── Goal scorers ──
-    home_ev    = events.get(home_name, {})
-    away_ev    = events.get(away_name, {})
+    # Backward-compatible: newer cache entries use fixed 'home'/'away' keys
+    # (robust to name-formatting differences), but matches already cached
+    # under the old code used the team-name itself as the key. Try the new
+    # shape first, fall back to the old one — so already-frozen finished
+    # matches don't break just because the shape changed going forward.
+    home_ev    = events.get('home') or events.get(home_name, {})
+    away_ev    = events.get('away') or events.get(away_name, {})
     home_goals = home_ev.get('goals', [])
     away_goals = away_ev.get('goals', [])
     home_reds  = home_ev.get('red_cards', [])

@@ -309,6 +309,15 @@ def _default_stats():
         'sample_size': 0,
     }
 
+def _fuzzy_team_match(label, team_name):
+    """True if label and team_name plausibly refer to the same team, even
+    if formatted slightly differently (e.g. Google adding extra words)."""
+    a = (label or '').lower().strip()
+    b = (team_name or '').lower().strip()
+    if not a or not b:
+        return False
+    return a == b or a in b or b in a
+
 def get_match_events(home_team, away_team):
     """
     Fetch goal scorers from Google via SerpAPI.
@@ -316,6 +325,15 @@ def get_match_events(home_team, away_team):
     once we have a good result there's no reason to ever re-fetch it, even
     across restarts. Failed/empty lookups are NOT cached, so a match whose
     data hasn't appeared on Google yet will simply be retried next time.
+
+    Returns fixed 'home'/'away' keys (in addition to the original
+    Google-labeled keys, kept for reference) — the caller should use
+    events['home']/events['away'], NOT look up by team name. Matching
+    Google's own team label against our team name via exact string
+    equality was fragile (any formatting difference between the two
+    sources would silently break the lookup); this resolves home/away via
+    fuzzy substring matching, with a positional fallback (Google's own
+    team order) if fuzzy matching can't confidently tell them apart.
     """
     cache_key = f"{home_team}|{away_team}"
 
@@ -343,6 +361,8 @@ def get_match_events(home_team, away_team):
             return None
 
         result = {}
+        team_blocks = []  # [(google_label, team_data), ...] in Google's own order
+
         for team in spotlight.get('teams', []):
             name  = team.get('name', '')
             goals = []
@@ -359,11 +379,28 @@ def get_match_events(home_team, away_team):
                     minute = c.get('in_game_time', {}).get('minute')
                     red_cards.append({'player': player, 'minute': minute})
 
-            result[name] = {
+            team_data = {
                 'goals':     sorted(goals, key=lambda x: x['minute'] or 0),
                 'red_cards': red_cards,
             }
+            result[name] = team_data  # kept for reference/debugging
+            team_blocks.append((name, team_data))
 
+        # Resolve home/away via fuzzy name matching first.
+        home_block = next((td for label, td in team_blocks if _fuzzy_team_match(label, home_team)), None)
+        away_block = next((td for label, td in team_blocks if _fuzzy_team_match(label, away_team)), None)
+
+        # Fallback: if fuzzy matching didn't confidently resolve both sides,
+        # trust Google's own listed order (this is what the old code
+        # silently assumed everywhere, just made explicit here as a
+        # fallback rather than the primary strategy).
+        if home_block is None and len(team_blocks) > 0:
+            home_block = team_blocks[0][1]
+        if away_block is None and len(team_blocks) > 1:
+            away_block = team_blocks[1][1]
+
+        result['home'] = home_block or {'goals': [], 'red_cards': []}
+        result['away'] = away_block or {'goals': [], 'red_cards': []}
         result['venue'] = spotlight.get('venue', '')
         result['stage'] = spotlight.get('stage', '')
 
